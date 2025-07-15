@@ -1,8 +1,10 @@
 # Member 3
 
+from vars import *
+
 class fileGameSystem:
-    def __init__(self, network_manager):
-        self.network_manager = network_manager
+    def __init__(self, netSystem):
+        self.netSystem = netSystem
 
     def offer_file(self, to_user, file_path, description=""):
         pass

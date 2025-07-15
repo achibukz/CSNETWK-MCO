@@ -1,5 +1,7 @@
 # Member 1
 
+from vars import *
+
 class networkSystem:
     def __init__(self, port=50999, verbose=False):
         self.port = port

@@ -4,6 +4,7 @@ from network_System import networkSystem
 from msg_System import msgSystem
 from file_game import fileGameSystem
 from grp_ui import groupUISystem
+from vars import *
 
 class LSNPClient:
     def __init__(self, user_id, display_name, verbose=False):

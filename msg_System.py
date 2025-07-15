@@ -1,8 +1,10 @@
 # Member 2
 
+from vars import *
+
 class msgSystem:
-    def __init__(self, network_manager):
-        self.network_manager = network_manager
+    def __init__(self, netSystem):
+        self.netSystem = netSystem
 
     def create_profile(self, user_id, display_name, status, avatar_path=None):
         pass

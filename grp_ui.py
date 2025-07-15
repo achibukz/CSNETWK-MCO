@@ -1,10 +1,12 @@
 # Member 4
 
+from vars import *
+
 class groupUISystem:
-    def __init__(self, network_manager, messaging_system, file_game_manager):
-        self.network_manager = network_manager
-        self.messaging_system = messaging_system
-        self.file_game_manager = file_game_manager
+    def __init__(self, netSystem, msgSystem, fileGameSystem):
+        self.netSystem = netSystem
+        self.msgSystem = msgSystem
+        self.fileGameSystem = fileGameSystem
 
     def create_group(self, group_id, group_name, members):
         pass
