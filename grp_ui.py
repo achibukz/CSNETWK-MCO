@@ -1,4 +1,5 @@
 # Member 4
+
 class groupUISystem:
     def __init__(self, network_manager, messaging_system, file_game_manager):
         self.network_manager = network_manager
