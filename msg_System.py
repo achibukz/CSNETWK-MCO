@@ -13,6 +13,8 @@ class msgSystem:
         pass
 
     def send_dm(self, to_user, content):
+        message = {"type": "DM", "content": content}
+        self.netSystem.send_message(message, target_ip="127.0.0.1", target_port=6969)
         pass
 
     def send_like(self, to_user, post_timestamp, action="LIKE"):
@@ -68,3 +70,21 @@ class msgSystem:
 
     def get_peer_status(self, user_id):
         pass
+
+"""
+Message Types:
+1. Profile
+    - Show only display_name and status. Optional: PFP
+2. POST
+    - Show only display name and content
+3. DM
+    - Show only display_name and content
+4. PING
+    - Don't display anything
+5. ACK
+    - Don't display anything
+6. Follow
+    - Show that x person has followed you
+7. Unfollow
+    - X person has unfollowed you
+"""
