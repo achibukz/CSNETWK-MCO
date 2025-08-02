@@ -39,10 +39,12 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
 
             with socket(AF_INET, SOCK_DGRAM) as clientSocket:
                 if message["BROADCAST"]:
-                    print("BROADCASTING!!!")
+                    print("Broadcasting!!!")
                     clientSocket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
-                    
+
                     for ip, port in self.known_clients:
+                        print("Known client:")
+                        print(f"{ip} {port}")
                         local_ip, local_port = clientSocket.getsockname()
 
                         clientSocket.sendto(json_message.encode(), (ip, port))
@@ -69,26 +71,28 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
         try:
             data, addr = self.serverSocket.recvfrom(4096) # addr = ip, port
             raw_message = data.decode()
+            message = json.loads(raw_message)
 
             # if self.verbose:
-            print(f"[RECEIVED] From {addr} → {raw_message}")
+            print(f"[RECEIVED] From {addr} → {message}")
 
-            listening_port = raw_message.get("LISTEN_PORT", addr[1]) # addr 1 is sending port, and it's just a fallback in case listen port doesnt exist
-            self.known_clients.add(raw_message.get("LISTEN_PORT", addr[1]))
+            listening_port = message.get("LISTEN_PORT", addr[1]) # addr 1 is sending port, and it's just a fallback in case listen port doesnt exist
+            self.known_clients.add(("127.0.0.1", listening_port))
+            print("Adding the ff:")
+            print(listening_port)
 
-            self.parse_message(raw_message, addr)
+            self.parse_message(message, addr)
 
         except Exception as e:
             print(f"[ERROR] Failed to receive message: {e}")
 
         pass
 
-    def parse_message(self, raw_message, sender_addr):
+    def parse_message(self, message, sender_addr):
         print("PARSING!!!")
         try:
-            message = json.loads(raw_message)
             msg_type = message.get("TYPE")
-            print(raw_message)
+            print(message)
             print(msg_type)
 
             """ if msg_type == "POST":
