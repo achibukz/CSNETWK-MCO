@@ -1,0 +1,5 @@
+python3 main.py --user-id user1@127.0.0.1 --display-name "User One" --port 6969 --verbose
+
+python3 main.py --user-id user2@127.0.0.1 --display-name "User Two" --port 6970 --verbose
+
+python3 main.py --user-id use32@127.0.0.1 --display-name "User Three" --port 6971 --verbose

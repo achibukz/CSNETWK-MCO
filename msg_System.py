@@ -1,5 +1,7 @@
 # Member 2
 
+import time
+import random
 from vars import *
 
 class msgSystem:
@@ -7,10 +9,31 @@ class msgSystem:
         self.netSystem = netSystem
 
     def create_profile(self, user_id, display_name, status, avatar_path=None):
+        self.user_id = user_id
+        self.display_name = display_name
+        self.status = status
         pass
 
     def send_post(self, content, ttl=3600):
-        pass
+        user_id = self.user_id  # Assuming self.user_id = "dave@192.168.1.10"
+        timestamp = int(time.time())
+        message_id = f"{random.getrandbits(64):016x}"
+        token = f"{user_id}|{timestamp + ttl}|broadcast"
+
+        message = {
+            "TYPE": "POST",
+            "USER_ID": user_id,
+            "CONTENT": content,
+            "TTL": ttl,
+            "MESSAGE_ID": message_id,
+            "TOKEN": token,
+            "BROADCAST": True
+        }
+
+        ip_address = user_id.rsplit('@', 1)[1]
+        print(ip_address)
+
+        self.netSystem.send_message(message, target_ip=ip_address, target_port=6969)
 
     def send_dm(self, to_user, content):
         message = {"type": "DM", "content": content}

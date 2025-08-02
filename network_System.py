@@ -10,20 +10,18 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
     def __init__(self, port, verbose=False):
         self.port = port
         self.verbose = verbose
+        self.known_clients = set()
 
     def setup_socket(self):
-        serverSocket = socket(AF_INET, SOCK_DGRAM) # SOCK_DGRAM -> UDP
-        serverSocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1) # allows socket to reuse address
+        self.serverSocket = socket(AF_INET, SOCK_DGRAM) # SOCK_DGRAM -> UDP
+        self.serverSocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1) # allows socket to reuse address
 
         #Prepare a sever socket
-        serverSocket.bind(('', self.port))
+        self.serverSocket.bind(('127.0.0.1', self.port))
         print(f"Ready to receive on port {self.port}...")
 
         while True:
-            message, clientAddress = serverSocket.recvfrom(2048)
-            print(f"Received message: {message.decode()} from {clientAddress}")
-            # Echo or respond back if needed
-            serverSocket.sendto(b"Got your message", clientAddress)
+            self.receive_message()
         pass
 
     def start_listener(self):
@@ -32,14 +30,34 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
         thread.start()
 
     def send_message(self, message, target_ip=50999, target_port=6969):  # None for broadcast
-        """Send a JSON message via UDP to a target IP and port."""
+        """Send a JSON message via UDP to a target IP and port or everybody (if broadcast)."""
+        print("SENDING THE FF:")
+        print(message)
+        print("-----")
         try:
             json_message = json.dumps(message)
-            with socket(AF_INET, SOCK_DGRAM) as clientSocket:
-                clientSocket.sendto(json_message.encode(), (target_ip, target_port))
 
-            if self.verbose:
-                print(f"[SEND] To {target_ip}:{target_port} → {json_message}")
+            with socket(AF_INET, SOCK_DGRAM) as clientSocket:
+                if message["BROADCAST"]:
+                    print("BROADCASTING!!!")
+                    clientSocket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
+                    
+                    for ip, port in self.known_clients:
+                        local_ip, local_port = clientSocket.getsockname()
+
+                        clientSocket.sendto(json_message.encode(), (ip, port))
+
+                        if self.verbose:
+                            # Log sender and receiver
+                            print(f"[SEND] From {local_ip}:{local_port} To {ip}:{port}")
+                else:
+                    with socket(AF_INET, SOCK_DGRAM) as clientSocket:
+                        clientSocket.sendto(json_message.encode(), (target_ip, target_port))
+                        local_ip, local_port = clientSocket.getsockname()
+                        print(f"[SEND] From {local_ip}:{local_port} To {target_ip}:{target_port}")
+
+                    if self.verbose:
+                        print(f"[SEND] To {target_ip}:{target_port} → {json_message}")
 
         except Exception as e:
             if self.verbose:
@@ -47,10 +65,43 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
         pass
 
     def receive_message(self):
+        print("RECEOVED!!!")
+        try:
+            data, addr = self.serverSocket.recvfrom(4096) # addr = ip, port
+            raw_message = data.decode()
+
+            # if self.verbose:
+            print(f"[RECEIVED] From {addr} → {raw_message}")
+
+            listening_port = raw_message.get("LISTEN_PORT", addr[1]) # addr 1 is sending port, and it's just a fallback in case listen port doesnt exist
+            self.known_clients.add(raw_message.get("LISTEN_PORT", addr[1]))
+
+            self.parse_message(raw_message, addr)
+
+        except Exception as e:
+            print(f"[ERROR] Failed to receive message: {e}")
+
         pass
 
-    def parse_message(self, raw_message):
-        pass
+    def parse_message(self, raw_message, sender_addr):
+        print("PARSING!!!")
+        try:
+            message = json.loads(raw_message)
+            msg_type = message.get("TYPE")
+            print(raw_message)
+            print(msg_type)
+
+            """ if msg_type == "POST":
+                # self.handle_post(message, sender_addr)
+                pass
+             elif msg_type == "DM":
+                # self.handle_dm(message, sender_addr)
+                pass 
+            else:
+                print(f"[WARN] Unknown message type: {msg_type}") """
+
+        except Exception as e:
+            print(f"[ERROR] Failed to parse message: {e}")
 
     def validate_token(self, token, scope, sender_ip):
         pass
