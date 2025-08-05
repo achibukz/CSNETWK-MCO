@@ -16,8 +16,8 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
         self.serverSocket = socket(AF_INET, SOCK_DGRAM) # SOCK_DGRAM -> UDP
         self.serverSocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1) # allows socket to reuse address
 
-        #Prepare a sever socket
-        self.serverSocket.bind(('127.0.0.1', self.port))
+        #Prepare a sever socket - bind to all interfaces to receive from other devices
+        self.serverSocket.bind(('0.0.0.0', self.port))
         print(f"Ready to receive on port {self.port}...")
 
         while True:
@@ -50,14 +50,27 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                         if self.verbose:
                             print("Known client:")
                             print(f"{ip} {port}")
-                        local_ip, local_port = clientSocket.getsockname()
+                        
+                        # Get our local IP for better self-detection
+                        try:
+                            temp_socket = socket(AF_INET, SOCK_DGRAM)
+                            temp_socket.connect(("8.8.8.8", 80))
+                            local_ip = temp_socket.getsockname()[0]
+                            temp_socket.close()
+                        except:
+                            local_ip = "127.0.0.1"
+                        
                         # Don't send to self
-                        if not (ip == "127.0.0.1" and port == self.port):
+                        is_self = (ip == local_ip and port == self.port) or \
+                                 (ip == "127.0.0.1" and port == self.port)
+                        
+                        if not is_self:
                             clientSocket.sendto(lsnp_message.encode(), (ip, port))
-
-                        if self.verbose:
-                            # Log sender and receiver
-                            print(f"[SEND] From {local_ip}:{local_port} To {ip}:{port}")
+                            if self.verbose:
+                                local_send_ip, local_send_port = clientSocket.getsockname()
+                                print(f"[SEND] From {local_send_ip}:{local_send_port} To {ip}:{port}")
+                        elif self.verbose:
+                            print(f"Skipping self: {ip}:{port}")
                     
                     # Also send to broadcast address for device discovery
                     try:
@@ -69,14 +82,28 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                         if self.verbose:
                             print(f"[WARN] Broadcast failed: {e}")
                 else:
+                    # Get our local IP for better self-detection
+                    try:
+                        temp_socket = socket(AF_INET, SOCK_DGRAM)
+                        temp_socket.connect(("8.8.8.8", 80))
+                        local_ip = temp_socket.getsockname()[0]
+                        temp_socket.close()
+                    except:
+                        local_ip = "127.0.0.1"
+                    
                     # Don't send to self when sending unicast
-                    if not (target_ip == "127.0.0.1" and target_port == self.port):
+                    is_self = (target_ip == local_ip and target_port == self.port) or \
+                             (target_ip == "127.0.0.1" and target_port == self.port)
+                    
+                    if not is_self:
                         clientSocket.sendto(lsnp_message.encode(), (target_ip, target_port))
-                        local_ip, local_port = clientSocket.getsockname()
-                        print(f"[SEND] From {local_ip}:{local_port} To {target_ip}:{target_port}")
+                        local_send_ip, local_send_port = clientSocket.getsockname()
+                        print(f"[SEND] From {local_send_ip}:{local_send_port} To {target_ip}:{target_port}")
 
                         if self.verbose:
                             print(f"[SEND] To {target_ip}:{target_port} -> {lsnp_message}")
+                    elif self.verbose:
+                        print(f"Skipping unicast to self: {target_ip}:{target_port}")
 
         except Exception as e:
             if self.verbose:
@@ -119,11 +146,27 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                 print(f"[RECEIVED] From {addr} -> {message}")
 
             listening_port = message.get("LISTEN_PORT", addr[1]) # addr 1 is sending port, and it's just a fallback in case listen port doesnt exist
+            
+            # Get our local IP to avoid adding ourselves as a client
+            try:
+                # Get our actual IP address
+                temp_socket = socket(AF_INET, SOCK_DGRAM)
+                temp_socket.connect(("8.8.8.8", 80))
+                local_ip = temp_socket.getsockname()[0]
+                temp_socket.close()
+            except:
+                local_ip = "127.0.0.1"  # fallback
+            
             # Only add to known clients if it's not ourselves
-            if not (addr[0] == "127.0.0.1" and int(listening_port) == self.port):
+            is_self = (addr[0] == local_ip and int(listening_port) == self.port) or \
+                     (addr[0] == "127.0.0.1" and int(listening_port) == self.port)
+            
+            if not is_self:
                 self.known_clients.add((addr[0], int(listening_port)))
                 if self.verbose:
                     print(f"Adding client: {addr[0]}:{listening_port}")
+            elif self.verbose:
+                print(f"Ignoring self: {addr[0]}:{listening_port} (local: {local_ip}:{self.port})")
 
             self.parse_message(message, addr)
 
