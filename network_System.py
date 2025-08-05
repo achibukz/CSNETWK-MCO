@@ -10,6 +10,7 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
         self.port = port
         self.verbose = verbose
         self.known_clients = set()
+        self.msg_system = None  # Will be set by main.py
 
     def setup_socket(self):
         self.serverSocket = socket(AF_INET, SOCK_DGRAM) # SOCK_DGRAM -> UDP
@@ -28,7 +29,7 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
         thread = threading.Thread(target=self.setup_socket, daemon=True)
         thread.start()
 
-    def send_message(self, message, target_ip=50999, target_port=6969):  # None for broadcast
+    def send_message(self, message, target_ip=LSNP_PORT, target_port=LSNP_PORT):  # None for broadcast
         """Send an LSNP message via UDP to a target IP and port or everybody (if broadcast)."""
         if self.verbose:
             print("SENDING THE FF:")
@@ -44,6 +45,7 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                         print("Broadcasting!!!")
                     clientSocket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
 
+                    # Send to known clients
                     for ip, port in self.known_clients:
                         if self.verbose:
                             print("Known client:")
@@ -56,6 +58,16 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                         if self.verbose:
                             # Log sender and receiver
                             print(f"[SEND] From {local_ip}:{local_port} To {ip}:{port}")
+                    
+                    # Also send to broadcast address for device discovery
+                    try:
+                        broadcast_addr = "255.255.255.255"  # Limited broadcast
+                        clientSocket.sendto(lsnp_message.encode(), (broadcast_addr, LSNP_PORT))
+                        if self.verbose:
+                            print(f"[BROADCAST] Sent to {broadcast_addr}:{LSNP_PORT}")
+                    except Exception as e:
+                        if self.verbose:
+                            print(f"[WARN] Broadcast failed: {e}")
                 else:
                     # Don't send to self when sending unicast
                     if not (target_ip == "127.0.0.1" and target_port == self.port):
@@ -64,7 +76,7 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                         print(f"[SEND] From {local_ip}:{local_port} To {target_ip}:{target_port}")
 
                         if self.verbose:
-                            print(f"[SEND] To {target_ip}:{target_port} → {lsnp_message}")
+                            print(f"[SEND] To {target_ip}:{target_port} -> {lsnp_message}")
 
         except Exception as e:
             if self.verbose:
@@ -85,7 +97,14 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
         for line in lines:
             if ':' in line:
                 key, value = line.split(':', 1)
-                message_dict[key.strip()] = value.strip()
+                key = key.strip()
+                value = value.strip()
+                
+                # Try to convert numeric values back to int
+                if value.isdigit():
+                    value = int(value)
+                
+                message_dict[key] = value
         return message_dict
 
     def receive_message(self):
@@ -97,7 +116,7 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
             message = self._lsnp_to_dict(raw_message)
 
             if self.verbose:
-                print(f"[RECEIVED] From {addr} → {message}")
+                print(f"[RECEIVED] From {addr} -> {message}")
 
             listening_port = message.get("LISTEN_PORT", addr[1]) # addr 1 is sending port, and it's just a fallback in case listen port doesnt exist
             # Only add to known clients if it's not ourselves
@@ -121,25 +140,29 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                 print(f"Full message: {message}")
 
             # Route messages to appropriate systems
-            if msg_type in ["PROFILE", "POST", "DM", "PING", "LIKE", "FOLLOW", "UNFOLLOW"]:
-                # Import here to avoid circular imports
-                from msg_System import msgSystem
-                # We need to find the msgSystem instance - this should be handled differently
-                # For now, just print the message
-                print(f"[{msg_type}] {message}")
-            elif msg_type in ["TICTACTOE_INVITE", "TICTACTOE_MOVE", "TICTACTOE_RESULT"]:
+            if msg_type in [MSG_PROFILE, MSG_POST, MSG_DM, MSG_PING, MSG_LIKE, MSG_FOLLOW, MSG_UNFOLLOW]:
+                if self.msg_system:
+                    self.msg_system.process_incoming_message(message)
+                else:
+                    # Fallback if msg_system not set
+                    print(f"[{msg_type}] {message}")
+            elif msg_type in [MSG_TICTACTOE_INVITE, MSG_TICTACTOE_MOVE, MSG_TICTACTOE_RESULT]:
                 print(f"[GAME] {message}")
-            elif msg_type in ["GROUP_CREATE", "GROUP_UPDATE", "GROUP_MESSAGE"]:
+            elif msg_type in [MSG_GROUP_CREATE, MSG_GROUP_UPDATE, MSG_GROUP_MESSAGE]:
                 print(f"[GROUP] {message}")
-            elif msg_type in ["FILE_OFFER", "FILE_CHUNK", "FILE_RECEIVED"]:
+            elif msg_type in [MSG_FILE_OFFER, MSG_FILE_CHUNK, MSG_FILE_RECEIVED]:
                 print(f"[FILE] {message}")
-            elif msg_type == "HELLO":
+            elif msg_type == "HELLO":  # HELLO is not in specs, so keep as string
                 print(f"[HELLO] {message.get('DATA', 'Hello message')}")
             else:
                 print(f"[WARN] Unknown message type: {msg_type}")
 
         except Exception as e:
             print(f"[ERROR] Failed to parse message: {e}")
+
+    def set_msg_system(self, msg_system):
+        """Set the message system for proper routing."""
+        self.msg_system = msg_system
 
     def validate_token(self, token, scope, sender_ip):
         pass

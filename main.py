@@ -23,15 +23,21 @@ class LSNPClient:
             self.fileGameSystem
         )
         
+        # Set up cross-references for proper message routing
+        self.networkSystem.set_msg_system(self.msgSystem)
+        
     def start(self):
         # Start network listener
         self.networkSystem.start_listener()
         time.sleep(0.5)
-        self.msgSystem.create_profile(self.user_id, self.display_name, status=True)
+        self.msgSystem.create_profile(self.user_id, self.display_name, "Online and ready!")
+
+        # Start periodic PROFILE broadcasting
+        self.msgSystem.start_ping_broadcast()
 
         # Send HELLO to user1 if not user1
         if self.user_id != 'user1@127.0.0.1':
-            self.send_hello("127.0.0.1", 6969)
+            self.send_hello("127.0.0.1", LSNP_PORT)
 
         # Start ping broadcaster
         # Start UI
@@ -39,13 +45,14 @@ class LSNPClient:
             print("\n=== LSNP Client Menu ===")
             print("1. Send POST")
             print("2. Send HELLO")
-            print("3. Toggle verbose mode")
-            print("4. Show known clients")
-            print("5. Show known peers and their display names")
-            print("6. Show all valid posts")
-            print("7. Show all DMs")
-            print("8. Test message crafting")
-            print("9. Quit")
+            print("3. Send DM")
+            print("4. Toggle verbose mode")
+            print("5. Show known clients")
+            print("6. Show known peers and their display names")
+            print("7. Show all valid posts")
+            print("8. Show all DMs")
+            print("9. Test message crafting")
+            print("10. Quit")
 
             choice = input("Enter choice: ").strip()
 
@@ -55,32 +62,38 @@ class LSNPClient:
 
             elif choice == "2":
                 target_ip = input("Enter target IP (default: 127.0.0.1): ").strip() or "127.0.0.1"
-                target_port = input("Enter target port (default: 6970): ").strip()
-                target_port = int(target_port) if target_port else 6970
+                target_port = input(f"Enter target port (default: {LSNP_PORT}): ").strip()
+                target_port = int(target_port) if target_port else LSNP_PORT
                 self.send_hello(target_ip, target_port)
 
             elif choice == "3":
+                to_user = input("Enter recipient user_id (e.g., user@127.0.0.1): ").strip()
+                content = input("Enter DM content: ")
+                if to_user and content:
+                    self.msgSystem.send_dm(to_user, content)
+
+            elif choice == "4":
                 self.networkSystem.toggle_verbose_mode()
                 print("Verbose mode is now", "ON" if self.networkSystem.verbose else "OFF")
 
-            elif choice == "4":
+            elif choice == "5":
                 print("Known clients:")
                 for ip, port in self.networkSystem.known_clients:
                     print(f"  - {ip}:{port}")
 
-            elif choice == "5":
+            elif choice == "6":
                 self.show_known_peers()
 
-            elif choice == "6":
+            elif choice == "7":
                 self.show_all_posts()
 
-            elif choice == "7":
+            elif choice == "8":
                 self.show_all_dms()
 
-            elif choice == "8":
+            elif choice == "9":
                 self.test_message_crafting()
 
-            elif choice == "9":
+            elif choice == "10":
                 print("Exiting...")
                 break
 
@@ -92,8 +105,7 @@ class LSNPClient:
     def show_known_peers(self):
         """Show list of known peers and their display names."""
         print("\n=== Known Peers ===")
-        # This would need to be implemented with peer data storage
-        peers = getattr(self.msgSystem, 'known_peers', {})
+        peers = self.msgSystem.get_known_peers()
         if peers:
             for user_id, info in peers.items():
                 display_name = info.get('display_name', user_id)
@@ -105,28 +117,28 @@ class LSNPClient:
     def show_all_posts(self):
         """Show all valid posts."""
         print("\n=== All Valid Posts ===")
-        # This would need to be implemented with post storage
-        posts = getattr(self.msgSystem, 'stored_posts', [])
+        posts = self.msgSystem.get_all_posts()
         if posts:
             for post in posts:
                 user_id = post.get('USER_ID', 'Unknown')
                 content = post.get('CONTENT', 'No content')
                 timestamp = post.get('TIMESTAMP', 'No timestamp')
-                print(f"  [{user_id}] {content} (at {timestamp})")
+                display_name = self.msgSystem.get_display_name(user_id)
+                print(f"  [{display_name}] {content} (at {timestamp})")
         else:
             print("  No posts available")
 
     def show_all_dms(self):
         """Show all DMs."""
         print("\n=== All Direct Messages ===")
-        # This would need to be implemented with DM storage
-        dms = getattr(self.msgSystem, 'stored_dms', [])
+        dms = self.msgSystem.get_all_dms()
         if dms:
             for dm in dms:
                 from_user = dm.get('FROM', 'Unknown')
                 content = dm.get('CONTENT', 'No content')
                 timestamp = dm.get('TIMESTAMP', 'No timestamp')
-                print(f"  From {from_user}: {content} (at {timestamp})")
+                display_name = self.msgSystem.get_display_name(from_user)
+                print(f"  From {display_name}: {content} (at {timestamp})")
         else:
             print("  No DMs available")
 
@@ -153,7 +165,7 @@ class LSNPClient:
     def test_profile_message(self):
         """Test PROFILE message crafting."""
         message = {
-            "TYPE": "PROFILE",
+            "TYPE": MSG_PROFILE,
             "USER_ID": self.user_id,
             "DISPLAY_NAME": self.display_name,
             "STATUS": "Testing LSNP!",
@@ -175,12 +187,12 @@ class LSNPClient:
         message_id = f"{random.getrandbits(64):016x}"
         
         message = {
-            "TYPE": "POST",
+            "TYPE": MSG_POST,
             "USER_ID": self.user_id,
             "CONTENT": content,
             "TTL": 3600,
             "MESSAGE_ID": message_id,
-            "TOKEN": f"{self.user_id}|{timestamp + 3600}|broadcast",
+            "TOKEN": f"{self.user_id}|{timestamp + 3600}|{SCOPE_BROADCAST}",
             "TIMESTAMP": timestamp,
             "BROADCAST": True
         }
@@ -196,13 +208,13 @@ class LSNPClient:
         message_id = f"{random.getrandbits(64):016x}"
         
         message = {
-            "TYPE": "DM",
+            "TYPE": MSG_DM,
             "FROM": self.user_id,
             "TO": to_user,
             "CONTENT": content,
             "TIMESTAMP": timestamp,
             "MESSAGE_ID": message_id,
-            "TOKEN": f"{self.user_id}|{timestamp + 3600}|chat"
+            "TOKEN": f"{self.user_id}|{timestamp + 3600}|{SCOPE_CHAT}"
         }
         lsnp_format = self.networkSystem._dict_to_lsnp(message)
         print("LSNP DM Message:")
@@ -234,7 +246,7 @@ if __name__ == "__main__":
     parser.add_argument('--verbose', action='store_true', help='Enable verbose mode')
     parser.add_argument('--user-id', required=True, help='User ID (username@ip)')
     parser.add_argument('--display-name', required=True, help='Display name')
-    parser.add_argument('--port', type=int, default=6969, help='Port to listen on')
+    parser.add_argument('--port', type=int, default=LSNP_PORT, help='Port to listen on')
     
     args = parser.parse_args()
     
