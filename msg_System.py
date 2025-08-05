@@ -48,7 +48,8 @@ class msgSystem:
         self.netSystem.send_message(message)
 
     def send_post(self, content, ttl=3600):
-        user_id = self.user_id  # Assuming self.user_id = "dave@192.168.1.10"
+        """Send a POST message to all followers only (unicast to each follower)."""
+        user_id = self.user_id
         timestamp = int(time.time())
         message_id = f"{random.getrandbits(64):016x}"
         token = f"{user_id}|{timestamp + ttl}|{SCOPE_BROADCAST}"
@@ -61,11 +62,52 @@ class msgSystem:
             "MESSAGE_ID": message_id,
             "TOKEN": token,
             "TIMESTAMP": timestamp,
-            "BROADCAST": True
+            "BROADCAST": False  # Changed to False since we're doing unicast
         }
 
-        # Send as broadcast to all known clients
-        self.netSystem.send_message(message)
+        # Send to all followers individually (unicast)
+        followers_list = self.get_followers_list()
+        if not followers_list:
+            print(f"[POST] No followers to send to. Your post: '{content}'")
+            # Still store our own post locally
+            self.stored_posts.append(message)
+            return
+
+        sent_count = 0
+        failed_count = 0
+        
+        for follower_user_id in followers_list:
+            try:
+                # Extract IP from user_id for unicast
+                ip_address = follower_user_id.rsplit('@', 1)[1] if '@' in follower_user_id else "127.0.0.1"
+                target_port = LSNP_PORT
+                
+                # Find the port for this user from known_clients
+                for known_ip, known_port in self.netSystem.known_clients:
+                    if known_ip == ip_address:
+                        target_port = known_port
+                        break
+                
+                self.netSystem.send_message(message, target_ip=ip_address, target_port=target_port)
+                sent_count += 1
+                
+                if self.netSystem.verbose:
+                    display_name = self.get_display_name(follower_user_id)
+                    print(f"[DEBUG] Sent POST to follower: {display_name} ({follower_user_id})")
+                    
+            except Exception as e:
+                failed_count += 1
+                if self.netSystem.verbose:
+                    display_name = self.get_display_name(follower_user_id)
+                    print(f"[ERROR] Failed to send POST to {display_name}: {e}")
+        
+        # Store our own post locally
+        self.stored_posts.append(message)
+        
+        # Show summary
+        print(f"[POST] Sent to {sent_count}/{len(followers_list)} followers: '{content}'")
+        if failed_count > 0:
+            print(f"[WARN] Failed to send to {failed_count} followers")
 
     def send_dm(self, to_user, content):
         """Send a direct message to a specific user."""
@@ -131,6 +173,9 @@ class msgSystem:
             # Add to our following list
             self.following.add(target_user)
             print(f"[FOLLOW] Now following {self.get_display_name(target_user)}")
+            
+            # Trigger a PING to the newly followed user to get their recent posts
+            self.request_recent_posts_from_user(target_user)
             
         except Exception as e:
             print(f"[ERROR] Failed to send FOLLOW: {e}")
