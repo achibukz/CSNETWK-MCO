@@ -365,18 +365,6 @@ class msgSystem:
         display_name = self.get_display_name(from_user)
         print(f"[LIKE] {display_name} {action.lower()}d your post")
 
-    def handle_follow_message(self, message):
-        """Handle incoming FOLLOW messages."""
-        from_user = message.get("FROM")
-        display_name = self.get_display_name(from_user)
-        print(f"[FOLLOW] {display_name} started following you")
-
-    def handle_unfollow_message(self, message):
-        """Handle incoming UNFOLLOW messages."""
-        from_user = message.get("FROM")
-        display_name = self.get_display_name(from_user)
-        print(f"[UNFOLLOW] {display_name} unfollowed you")
-
     def validate_basic_token(self, token):
         """Basic token validation - checks format and expiration."""
         try:
