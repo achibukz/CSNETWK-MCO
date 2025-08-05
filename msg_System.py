@@ -27,13 +27,12 @@ class msgSystem:
             "TTL": ttl,
             "MESSAGE_ID": message_id,
             "TOKEN": token,
+            "TIMESTAMP": timestamp,
             "BROADCAST": True
         }
 
-        ip_address = user_id.rsplit('@', 1)[1]
-        print(ip_address)
-
-        self.netSystem.send_message(message, target_ip=ip_address, target_port=6969)
+        # Send as broadcast to all known clients
+        self.netSystem.send_message(message)
 
     def send_dm(self, to_user, content):
         message = {"type": "DM", "content": content}

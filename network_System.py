@@ -4,7 +4,6 @@ import time
 
 from vars import *
 from socket import *
-import json
 
 class networkSystem: # NOTE: Should probs pass the ui class here to acomplish printing as well
     def __init__(self, port, verbose=False):
@@ -30,79 +29,114 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
         thread.start()
 
     def send_message(self, message, target_ip=50999, target_port=6969):  # None for broadcast
-        """Send a JSON message via UDP to a target IP and port or everybody (if broadcast)."""
-        print("SENDING THE FF:")
-        print(message)
-        print("-----")
+        """Send an LSNP message via UDP to a target IP and port or everybody (if broadcast)."""
+        if self.verbose:
+            print("SENDING THE FF:")
+            print(message)
+            print("-----")
         try:
-            json_message = json.dumps(message)
-
+            # Convert to LSNP format (key-value pairs with \n\n terminator)
+            lsnp_message = self._dict_to_lsnp(message)
+            
             with socket(AF_INET, SOCK_DGRAM) as clientSocket:
-                if message["BROADCAST"]:
-                    print("Broadcasting!!!")
+                if message.get("BROADCAST", False):
+                    if self.verbose:
+                        print("Broadcasting!!!")
                     clientSocket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
 
                     for ip, port in self.known_clients:
-                        print("Known client:")
-                        print(f"{ip} {port}")
+                        if self.verbose:
+                            print("Known client:")
+                            print(f"{ip} {port}")
                         local_ip, local_port = clientSocket.getsockname()
-
-                        clientSocket.sendto(json_message.encode(), (ip, port))
+                        # Don't send to self
+                        if not (ip == "127.0.0.1" and port == self.port):
+                            clientSocket.sendto(lsnp_message.encode(), (ip, port))
 
                         if self.verbose:
                             # Log sender and receiver
                             print(f"[SEND] From {local_ip}:{local_port} To {ip}:{port}")
                 else:
-                    with socket(AF_INET, SOCK_DGRAM) as clientSocket:
-                        clientSocket.sendto(json_message.encode(), (target_ip, target_port))
+                    # Don't send to self when sending unicast
+                    if not (target_ip == "127.0.0.1" and target_port == self.port):
+                        clientSocket.sendto(lsnp_message.encode(), (target_ip, target_port))
                         local_ip, local_port = clientSocket.getsockname()
                         print(f"[SEND] From {local_ip}:{local_port} To {target_ip}:{target_port}")
 
-                    if self.verbose:
-                        print(f"[SEND] To {target_ip}:{target_port} → {json_message}")
+                        if self.verbose:
+                            print(f"[SEND] To {target_ip}:{target_port} → {lsnp_message}")
 
         except Exception as e:
             if self.verbose:
                 print(f"[ERROR] Failed to send message: {e}")
-        pass
+
+    def _dict_to_lsnp(self, message_dict):
+        """Convert a dictionary to LSNP key-value format."""
+        lines = []
+        for key, value in message_dict.items():
+            if key != "BROADCAST":  # Don't include internal flags in LSNP message
+                lines.append(f"{key}: {value}")
+        return "\n".join(lines) + "\n\n"
+
+    def _lsnp_to_dict(self, lsnp_message):
+        """Convert LSNP key-value format to dictionary."""
+        lines = lsnp_message.strip().split('\n')
+        message_dict = {}
+        for line in lines:
+            if ':' in line:
+                key, value = line.split(':', 1)
+                message_dict[key.strip()] = value.strip()
+        return message_dict
 
     def receive_message(self):
-        print("RECEOVED!!!")
+        if self.verbose:
+            print("RECEIVED!!!")
         try:
             data, addr = self.serverSocket.recvfrom(4096) # addr = ip, port
             raw_message = data.decode()
-            message = json.loads(raw_message)
+            message = self._lsnp_to_dict(raw_message)
 
-            # if self.verbose:
-            print(f"[RECEIVED] From {addr} → {message}")
+            if self.verbose:
+                print(f"[RECEIVED] From {addr} → {message}")
 
             listening_port = message.get("LISTEN_PORT", addr[1]) # addr 1 is sending port, and it's just a fallback in case listen port doesnt exist
-            self.known_clients.add(("127.0.0.1", listening_port))
-            print("Adding the ff:")
-            print(listening_port)
+            # Only add to known clients if it's not ourselves
+            if not (addr[0] == "127.0.0.1" and int(listening_port) == self.port):
+                self.known_clients.add((addr[0], int(listening_port)))
+                if self.verbose:
+                    print(f"Adding client: {addr[0]}:{listening_port}")
 
             self.parse_message(message, addr)
 
         except Exception as e:
             print(f"[ERROR] Failed to receive message: {e}")
 
-        pass
-
     def parse_message(self, message, sender_addr):
-        print("PARSING!!!")
+        if self.verbose:
+            print("PARSING!!!")
         try:
             msg_type = message.get("TYPE")
-            print(message)
-            print(msg_type)
+            if self.verbose:
+                print(f"Message type: {msg_type}")
+                print(f"Full message: {message}")
 
-            """ if msg_type == "POST":
-                # self.handle_post(message, sender_addr)
-                pass
-             elif msg_type == "DM":
-                # self.handle_dm(message, sender_addr)
-                pass 
+            # Route messages to appropriate systems
+            if msg_type in ["PROFILE", "POST", "DM", "PING", "LIKE", "FOLLOW", "UNFOLLOW"]:
+                # Import here to avoid circular imports
+                from msg_System import msgSystem
+                # We need to find the msgSystem instance - this should be handled differently
+                # For now, just print the message
+                print(f"[{msg_type}] {message}")
+            elif msg_type in ["TICTACTOE_INVITE", "TICTACTOE_MOVE", "TICTACTOE_RESULT"]:
+                print(f"[GAME] {message}")
+            elif msg_type in ["GROUP_CREATE", "GROUP_UPDATE", "GROUP_MESSAGE"]:
+                print(f"[GROUP] {message}")
+            elif msg_type in ["FILE_OFFER", "FILE_CHUNK", "FILE_RECEIVED"]:
+                print(f"[FILE] {message}")
+            elif msg_type == "HELLO":
+                print(f"[HELLO] {message.get('DATA', 'Hello message')}")
             else:
-                print(f"[WARN] Unknown message type: {msg_type}") """
+                print(f"[WARN] Unknown message type: {msg_type}")
 
         except Exception as e:
             print(f"[ERROR] Failed to parse message: {e}")

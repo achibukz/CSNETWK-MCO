@@ -1,0 +1,57 @@
+Grading Rubric (Total: 125/100 points)
+To ensure steady and verifiable progress, students may only proceed to the next milestone after successfully completing the previous one. Each milestone builds upon the functionality of the prior stage. Skipping or bypassing a milestone without approval is not permitted and would result in a grade of zero past the milestone. Make sure you save your code for each milestone. This structure is designed to reinforce foundational understanding and maintain project integrity.
+Milestone #1: Basic Functionality (35)
+
+Category
+Points
+Criteria
+Clean Architecture & Logging
+5 pts
+Modular code, readable structure, debug/log output.
+Protocol Compliance Test Suite
+10 pts
+CLI or tests for crafting, parsing, and simulating LSNP messages. Should be able to turn on verbose and non-verbose settings.
+Message Sending and Receiving
+10 pts
+The peer can send and receive messages at the same time
+Protocol Parsing and Message Format
+10 pts
+Parses all LSNP messages (PROFILE, POST, DM, etc.) in key-value format correctly. 
+The peer should be able to show a list of names (i.e. known peers and their display names) and all the valid posts and DMs by the said peer. 
+
+
+Milestone #2: Basic User Discovery and Messaging (25)
+Category
+Points
+Criteria
+User Discovery and Presence
+5 pts
+Broadcast PING/PROFILE every 5 minutes; responds to presence announcements.
+Messaging Functionality
+15 pts
+Sends/receives POST, DM, FOLLOW, UNFOLLOW .
+
+
+
+Milestone #3: Advanced Functionality (65)
+Category
+Points
+Criteria
+Profile Picture and Likes
+10 pts
+Correctly includes AVATAR fields and LIKE actions for posts.
+File Transfer
+15 pts
+Handles AVATAR fields and FILE_OFFER, FILE_CHUNK, FILE_RECEIVED; reconstructs full file. 
+Token Handling and Scope Validation
+10 pts
+Validates token structure, expiration, and appropriate scope. There should be a way to store all message with valid token structure.
+Group Management
+15 pts
+Implements GROUP_CREATE, GROUP_UPDATE, GROUP_MESSAGE; tracks membership locally.
+There should be a mechanism to print all groups the user belongs to, the members of a group, and print only incoming group message.
+Game Support (Tic Tac Toe)
+15 pts
+Implements basic game state, move tracking, result detection.
+
+
