@@ -55,7 +55,8 @@ class LSNPClient:
             print("10. Follow user")
             print("11. Unfollow user")
             print("12. Show following/followers")
-            print("13. Quit")
+            print("13. Edit profile")
+            print("14. Quit")
 
             choice = input("Enter choice: ").strip()
 
@@ -115,6 +116,9 @@ class LSNPClient:
                 self.show_following_info()
 
             elif choice == "13":
+                self.edit_profile()
+
+            elif choice == "14":
                 print("Exiting...")
                 break
 
@@ -352,6 +356,79 @@ class LSNPClient:
                 print(f"  - {display_name} ({user_id})")
         else:
             print("  No followers yet.")
+
+    def edit_profile(self):
+        """Edit user profile (display name, status, avatar)."""
+        print("\n=== Edit Profile ===")
+        print(f"Current profile:")
+        print(f"  User ID: {self.user_id}")
+        print(f"  Display Name: {self.display_name}")
+        print(f"  Status: {getattr(self.msgSystem, 'status', 'Online and ready!')}")
+        
+        print("\nWhat would you like to edit?")
+        print("1. Display Name")
+        print("2. Status")
+        print("3. Avatar (profile picture)")
+        print("4. Update all")
+        print("5. Cancel")
+        
+        choice = input("Enter choice: ").strip()
+        
+        new_display_name = self.display_name
+        new_status = getattr(self.msgSystem, 'status', 'Online and ready!')
+        avatar_path = None
+        
+        if choice == "1":
+            new_display_name = input(f"Enter new display name (current: {self.display_name}): ").strip()
+            if not new_display_name:
+                new_display_name = self.display_name
+                
+        elif choice == "2":
+            new_status = input(f"Enter new status (current: {new_status}): ").strip()
+            if not new_status:
+                new_status = getattr(self.msgSystem, 'status', 'Online and ready!')
+                
+        elif choice == "3":
+            avatar_path = input("Enter path to avatar image (leave empty to remove avatar): ").strip()
+            if avatar_path and not avatar_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')):
+                print("Warning: File doesn't have a common image extension")
+                
+        elif choice == "4":
+            new_display_name = input(f"Enter new display name (current: {self.display_name}): ").strip()
+            if not new_display_name:
+                new_display_name = self.display_name
+                
+            new_status = input(f"Enter new status (current: {new_status}): ").strip()
+            if not new_status:
+                new_status = getattr(self.msgSystem, 'status', 'Online and ready!')
+                
+            avatar_path = input("Enter path to avatar image (leave empty for no change): ").strip()
+            if avatar_path and not avatar_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')):
+                print("Warning: File doesn't have a common image extension")
+                
+        elif choice == "5":
+            print("Profile edit cancelled.")
+            return
+        else:
+            print("Invalid choice.")
+            return
+        
+        # Update profile
+        try:
+            # Update local attributes
+            self.display_name = new_display_name
+            
+            # Create and broadcast updated profile
+            self.msgSystem.create_profile(self.user_id, new_display_name, new_status, avatar_path)
+            
+            print("✅ Profile updated successfully!")
+            print(f"  Display Name: {new_display_name}")
+            print(f"  Status: {new_status}")
+            if avatar_path:
+                print(f"  Avatar: {avatar_path}")
+                
+        except Exception as e:
+            print(f"❌ Failed to update profile: {e}")
 
     def send_hello(self, target_ip, target_port):
         message = {

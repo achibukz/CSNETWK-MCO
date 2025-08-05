@@ -47,17 +47,19 @@
 
 ## **Enhanced CLI Features (5 points)**
 
-### New Menu Options (10-13)
+### New Menu Options (10-14)
 - **Option 10**: Follow a user - Send FOLLOW message to specified user
 - **Option 11**: Unfollow a user - Send UNFOLLOW message to specified user  
 - **Option 12**: Show following info - Display following/followers lists
-- **Option 13**: Show posts from followed users - Display filtered posts
+- **Option 13**: Edit profile - Update display name, status, and avatar ✨ NEW!
+- **Option 14**: Quit - Exit the application
 
 ### User Experience Improvements
 - Clear success/error messages for all social actions
 - Real-time feedback for follow/unfollow operations
 - Comprehensive social status display
 - Intuitive menu navigation
+- **Profile editing with live updates** ✨ NEW!
 
 ---
 
