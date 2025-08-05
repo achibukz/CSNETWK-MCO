@@ -1,6 +1,7 @@
 # Member 1
 import threading
 import time
+import platform
 
 from vars import *
 from socket import *
@@ -16,10 +17,11 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
         self.serverSocket = socket(AF_INET, SOCK_DGRAM) # SOCK_DGRAM -> UDP
         self.serverSocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1) # allows socket to reuse address
 
-        try:
-            self.serverSocket.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)  # macOS fix
-        except AttributeError:
-            print("[WARN] SO_REUSEPORT not supported on this platform")
+        if platform.system() == "Darwin":
+            try:
+                self.serverSocket.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)  # macOS fix
+            except AttributeError:
+                print("[WARN] SO_REUSEPORT not supported on this platform")
 
         #Prepare a sever socket - bind to all interfaces to receive from other devices
         self.serverSocket.bind(('0.0.0.0', self.port))
