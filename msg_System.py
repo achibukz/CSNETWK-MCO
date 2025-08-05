@@ -11,6 +11,7 @@ class msgSystem:
         self.stored_posts = []  # Store valid posts
         self.stored_dms = []    # Store DMs
         self.following = set()  # Users we're following
+        self.followers = set()  # Users following us
         self.processed_messages = set()  # Track processed message IDs to prevent duplicates
 
     def create_profile(self, user_id, display_name, status, avatar_path=None):
@@ -98,6 +99,78 @@ class msgSystem:
         except Exception as e:
             print(f"[ERROR] Failed to send DM: {e}")
 
+    def send_follow(self, target_user):
+        """Send a FOLLOW message to a user."""
+        timestamp = int(time.time())
+        message_id = f"{random.getrandbits(64):016x}"
+        token = f"{self.user_id}|{timestamp + 3600}|{SCOPE_FOLLOW}"
+        
+        message = {
+            "TYPE": MSG_FOLLOW,
+            "MESSAGE_ID": message_id,
+            "FROM": self.user_id,
+            "TO": target_user,
+            "TIMESTAMP": timestamp,
+            "TOKEN": token
+        }
+        
+        # Send to specific user (unicast)
+        try:
+            # Extract IP from user_id
+            ip_address = target_user.rsplit('@', 1)[1] if '@' in target_user else "127.0.0.1"
+            target_port = LSNP_PORT
+            
+            # Find the port for this user from known_clients
+            for known_ip, known_port in self.netSystem.known_clients:
+                if known_ip == ip_address:
+                    target_port = known_port
+                    break
+            
+            self.netSystem.send_message(message, target_ip=ip_address, target_port=target_port)
+            
+            # Add to our following list
+            self.following.add(target_user)
+            print(f"[FOLLOW] Now following {self.get_display_name(target_user)}")
+            
+        except Exception as e:
+            print(f"[ERROR] Failed to send FOLLOW: {e}")
+
+    def send_unfollow(self, target_user):
+        """Send an UNFOLLOW message to a user."""
+        timestamp = int(time.time())
+        message_id = f"{random.getrandbits(64):016x}"
+        token = f"{self.user_id}|{timestamp + 3600}|{SCOPE_FOLLOW}"
+        
+        message = {
+            "TYPE": MSG_UNFOLLOW,
+            "MESSAGE_ID": message_id,
+            "FROM": self.user_id,
+            "TO": target_user,
+            "TIMESTAMP": timestamp,
+            "TOKEN": token
+        }
+        
+        # Send to specific user (unicast)
+        try:
+            # Extract IP from user_id
+            ip_address = target_user.rsplit('@', 1)[1] if '@' in target_user else "127.0.0.1"
+            target_port = LSNP_PORT
+            
+            # Find the port for this user from known_clients
+            for known_ip, known_port in self.netSystem.known_clients:
+                if known_ip == ip_address:
+                    target_port = known_port
+                    break
+            
+            self.netSystem.send_message(message, target_ip=ip_address, target_port=target_port)
+            
+            # Remove from our following list
+            self.following.discard(target_user)
+            print(f"[UNFOLLOW] No longer following {self.get_display_name(target_user)}")
+            
+        except Exception as e:
+            print(f"[ERROR] Failed to send UNFOLLOW: {e}")
+
     def send_like(self, to_user, post_timestamp, action="LIKE"):
         pass
 
@@ -125,6 +198,8 @@ class msgSystem:
             self.handle_follow_message(message)
         elif msg_type == MSG_UNFOLLOW:
             self.handle_unfollow_message(message)
+        elif msg_type == MSG_PING:
+            self.handle_ping_message(message)
 
     def handle_profile_message(self, message):
         """Handle incoming PROFILE messages."""
@@ -156,6 +231,12 @@ class msgSystem:
         if message_id and message_id in self.processed_messages:
             if self.netSystem.verbose:
                 print(f"[DEBUG] Ignoring duplicate POST: {message_id}")
+            return
+        
+        # Only accept posts from users we're following (or our own posts)
+        if user_id != self.user_id and user_id not in self.following:
+            if self.netSystem.verbose:
+                print(f"[DEBUG] Ignoring POST from non-followed user: {user_id}")
             return
         
         # Basic token validation (should be enhanced)
@@ -202,6 +283,34 @@ class msgSystem:
             else:
                 print(f"[DM] From {from_user} ({display_name}): {content}")
 
+    def handle_follow_message(self, message):
+        """Handle incoming FOLLOW messages."""
+        from_user = message.get("FROM")
+        to_user = message.get("TO")
+        token = message.get("TOKEN")
+        
+        # Only process if FOLLOW is for us
+        if to_user == self.user_id and token and self.validate_basic_token(token):
+            # Add to our followers list
+            self.followers.add(from_user)
+            
+            display_name = self.get_display_name(from_user)
+            print(f"[FOLLOW] {display_name} started following you")
+
+    def handle_unfollow_message(self, message):
+        """Handle incoming UNFOLLOW messages."""
+        from_user = message.get("FROM")
+        to_user = message.get("TO")
+        token = message.get("TOKEN")
+        
+        # Only process if UNFOLLOW is for us
+        if to_user == self.user_id and token and self.validate_basic_token(token):
+            # Remove from our followers list
+            self.followers.discard(from_user)
+            
+            display_name = self.get_display_name(from_user)
+            print(f"[UNFOLLOW] {display_name} unfollowed you")
+
     def handle_ping_message(self, message):
         """Handle incoming PING messages."""
         user_id = message.get("USER_ID")
@@ -209,6 +318,44 @@ class msgSystem:
             # Update last seen time
             if user_id in self.known_peers:
                 self.known_peers[user_id]['last_ping'] = int(time.time())
+            
+            # Respond with our PROFILE if we haven't sent one recently
+            if self.netSystem.verbose:
+                print(f"[PING] Received from {user_id}")
+            
+            # Send PROFILE response (optional - helps with discovery)
+            if hasattr(self, 'user_id'):
+                self.send_profile_response(user_id)
+
+    def send_profile_response(self, requesting_user):
+        """Send a PROFILE message in response to a PING."""
+        try:
+            # Extract IP from user_id for unicast response
+            ip_address = requesting_user.rsplit('@', 1)[1] if '@' in requesting_user else "127.0.0.1"
+            target_port = LSNP_PORT
+            
+            # Find the port for this user from known_clients
+            for known_ip, known_port in self.netSystem.known_clients:
+                if known_ip == ip_address:
+                    target_port = known_port
+                    break
+            
+            message = {
+                "TYPE": MSG_PROFILE,
+                "USER_ID": self.user_id,
+                "DISPLAY_NAME": self.display_name,
+                "STATUS": self.status,
+                "LISTEN_PORT": self.netSystem.port,
+                "BROADCAST": False  # Unicast response
+            }
+            
+            self.netSystem.send_message(message, target_ip=ip_address, target_port=target_port)
+            if self.netSystem.verbose:
+                print(f"[PROFILE] Sent response to {requesting_user}")
+                
+        except Exception as e:
+            if self.netSystem.verbose:
+                print(f"[ERROR] Failed to send PROFILE response: {e}")
 
     def handle_like_message(self, message):
         """Handle incoming LIKE messages."""
@@ -254,20 +401,33 @@ class msgSystem:
         
         def broadcast_profile():
             while True:
-                time.sleep(BROADCAST_INTERVAL)  # 5 minutes from vars.py
+                time.sleep(BROADCAST_INTERVAL)  # 30 seconds from vars.py
                 if hasattr(self, 'user_id'):
-                    # Re-broadcast PROFILE for presence
-                    message = {
-                        "TYPE": MSG_PROFILE,
-                        "USER_ID": self.user_id,
-                        "DISPLAY_NAME": self.display_name,
-                        "STATUS": self.status,
-                        "LISTEN_PORT": self.netSystem.port,  # Include our listening port
-                        "BROADCAST": True
-                    }
-                    self.netSystem.send_message(message)
-                    if self.netSystem.verbose:
-                        print(f"[BROADCAST] Sent periodic PROFILE update")
+                    # Alternate between PING and PROFILE broadcasts
+                    import random
+                    if random.choice([True, False]):
+                        # Send PING message
+                        ping_message = {
+                            "TYPE": MSG_PING,
+                            "USER_ID": self.user_id,
+                            "BROADCAST": True
+                        }
+                        self.netSystem.send_message(ping_message)
+                        if self.netSystem.verbose:
+                            print(f"[BROADCAST] Sent PING")
+                    else:
+                        # Re-broadcast PROFILE for presence
+                        message = {
+                            "TYPE": MSG_PROFILE,
+                            "USER_ID": self.user_id,
+                            "DISPLAY_NAME": self.display_name,
+                            "STATUS": self.status,
+                            "LISTEN_PORT": self.netSystem.port,  # Include our listening port
+                            "BROADCAST": True
+                        }
+                        self.netSystem.send_message(message)
+                        if self.netSystem.verbose:
+                            print(f"[BROADCAST] Sent periodic PROFILE update")
         
         # Start background thread for periodic broadcasting
         thread = threading.Thread(target=broadcast_profile, daemon=True)
@@ -281,6 +441,18 @@ class msgSystem:
 
     def is_following(self, user_id):
         pass
+
+    def is_following(self, user_id):
+        """Check if we're following a specific user."""
+        return user_id in self.following
+
+    def get_following_list(self):
+        """Get list of users we're following."""
+        return list(self.following)
+
+    def get_followers_list(self):
+        """Get list of users following us."""
+        return list(self.followers)
 
     def get_display_name(self, user_id):  # For pretty printing
         """Get display name for a user_id, fallback to user_id if not known."""

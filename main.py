@@ -52,7 +52,10 @@ class LSNPClient:
             print("7. Show all valid posts")
             print("8. Show all DMs")
             print("9. Test message crafting")
-            print("10. Quit")
+            print("10. Follow user")
+            print("11. Unfollow user")
+            print("12. Show following/followers")
+            print("13. Quit")
 
             choice = input("Enter choice: ").strip()
 
@@ -103,6 +106,15 @@ class LSNPClient:
                 self.test_message_crafting()
 
             elif choice == "10":
+                self.follow_user()
+
+            elif choice == "11":
+                self.unfollow_user()
+
+            elif choice == "12":
+                self.show_following_info()
+
+            elif choice == "13":
                 print("Exiting...")
                 break
 
@@ -242,6 +254,104 @@ class LSNPClient:
         lsnp_format = self.networkSystem._dict_to_lsnp(message)
         print("LSNP HELLO Message:")
         print(lsnp_format)
+
+    def follow_user(self):
+        """Follow a user."""
+        print("\n=== Follow User ===")
+        peers = self.msgSystem.get_known_peers()
+        if not peers:
+            print("No known peers to follow.")
+            return
+        
+        print("Available peers:")
+        for i, (user_id, info) in enumerate(peers.items(), 1):
+            display_name = info.get('display_name', user_id)
+            following_status = "✓ Following" if self.msgSystem.is_following(user_id) else ""
+            print(f"  {i}. {display_name} ({user_id}) {following_status}")
+        
+        try:
+            choice = input("\nEnter number to follow (or user_id): ").strip()
+            if choice.isdigit():
+                choice_num = int(choice) - 1
+                user_ids = list(peers.keys())
+                if 0 <= choice_num < len(user_ids):
+                    target_user = user_ids[choice_num]
+                else:
+                    print("Invalid selection.")
+                    return
+            else:
+                target_user = choice
+            
+            if target_user == self.user_id:
+                print("You cannot follow yourself.")
+                return
+                
+            if self.msgSystem.is_following(target_user):
+                print(f"You are already following {self.msgSystem.get_display_name(target_user)}.")
+                return
+            
+            self.msgSystem.send_follow(target_user)
+            
+        except ValueError:
+            print("Invalid input.")
+
+    def unfollow_user(self):
+        """Unfollow a user."""
+        print("\n=== Unfollow User ===")
+        following_list = self.msgSystem.get_following_list()
+        if not following_list:
+            print("You are not following anyone.")
+            return
+        
+        print("Users you are following:")
+        for i, user_id in enumerate(following_list, 1):
+            display_name = self.msgSystem.get_display_name(user_id)
+            print(f"  {i}. {display_name} ({user_id})")
+        
+        try:
+            choice = input("\nEnter number to unfollow (or user_id): ").strip()
+            if choice.isdigit():
+                choice_num = int(choice) - 1
+                if 0 <= choice_num < len(following_list):
+                    target_user = following_list[choice_num]
+                else:
+                    print("Invalid selection.")
+                    return
+            else:
+                target_user = choice
+            
+            if not self.msgSystem.is_following(target_user):
+                print(f"You are not following {target_user}.")
+                return
+            
+            self.msgSystem.send_unfollow(target_user)
+            
+        except ValueError:
+            print("Invalid input.")
+
+    def show_following_info(self):
+        """Show following and followers information."""
+        print("\n=== Following & Followers ===")
+        
+        # Show who we're following
+        following_list = self.msgSystem.get_following_list()
+        print(f"\n📤 Following ({len(following_list)} users):")
+        if following_list:
+            for user_id in following_list:
+                display_name = self.msgSystem.get_display_name(user_id)
+                print(f"  - {display_name} ({user_id})")
+        else:
+            print("  Not following anyone yet.")
+        
+        # Show who's following us
+        followers_list = self.msgSystem.get_followers_list()
+        print(f"\n📥 Followers ({len(followers_list)} users):")
+        if followers_list:
+            for user_id in followers_list:
+                display_name = self.msgSystem.get_display_name(user_id)
+                print(f"  - {display_name} ({user_id})")
+        else:
+            print("  No followers yet.")
 
     def send_hello(self, target_ip, target_port):
         message = {
