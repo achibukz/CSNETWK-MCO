@@ -158,9 +158,22 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
             except:
                 local_ip = "127.0.0.1"  # fallback
             
-            # Only add to known clients if it's not ourselves
-            is_self = (addr[0] == local_ip and int(listening_port) == self.port) or \
-                     (addr[0] == "127.0.0.1" and int(listening_port) == self.port)
+            # Improved self-detection: use USER_ID if available, otherwise fall back to IP/port
+            user_id = message.get("USER_ID")
+            our_user_id = getattr(self.msg_system, 'user_id', None) if self.msg_system else None
+            
+            is_self = False
+            if user_id and our_user_id:
+                # Use USER_ID for self-detection (most reliable)
+                is_self = (user_id == our_user_id)
+                if self.verbose and is_self:
+                    print(f"Ignoring self message: USER_ID {user_id}")
+            else:
+                # Fall back to IP/port detection for messages without USER_ID
+                is_self = (addr[0] == local_ip and int(listening_port) == self.port) or \
+                         (addr[0] == "127.0.0.1" and int(listening_port) == self.port)
+                if self.verbose and is_self:
+                    print(f"Ignoring self message: IP/port {addr[0]}:{listening_port}")
             
             if not is_self:
                 # Add to known clients (set automatically prevents duplicates)
@@ -171,8 +184,6 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                         print(f"Adding NEW client: {addr[0]}:{listening_port}")
                 elif self.verbose:
                     print(f"Already known client: {addr[0]}:{listening_port}")
-            elif self.verbose:
-                print(f"Ignoring self: {addr[0]}:{listening_port} (local: {local_ip}:{self.port})")
 
             self.parse_message(message, addr)
 
