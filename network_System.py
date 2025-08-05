@@ -145,7 +145,8 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
             if self.verbose:
                 print(f"[RECEIVED] From {addr} -> {message}")
 
-            listening_port = message.get("LISTEN_PORT", addr[1]) # addr 1 is sending port, and it's just a fallback in case listen port doesnt exist
+            # Get the correct listening port from the message
+            listening_port = message.get("LISTEN_PORT", LSNP_PORT)  # Use standard port as fallback
             
             # Get our local IP to avoid adding ourselves as a client
             try:
@@ -162,9 +163,14 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                      (addr[0] == "127.0.0.1" and int(listening_port) == self.port)
             
             if not is_self:
-                self.known_clients.add((addr[0], int(listening_port)))
-                if self.verbose:
-                    print(f"Adding client: {addr[0]}:{listening_port}")
+                # Add to known clients (set automatically prevents duplicates)
+                client_tuple = (addr[0], int(listening_port))
+                if client_tuple not in self.known_clients:
+                    self.known_clients.add(client_tuple)
+                    if self.verbose:
+                        print(f"Adding NEW client: {addr[0]}:{listening_port}")
+                elif self.verbose:
+                    print(f"Already known client: {addr[0]}:{listening_port}")
             elif self.verbose:
                 print(f"Ignoring self: {addr[0]}:{listening_port} (local: {local_ip}:{self.port})")
 
@@ -224,6 +230,16 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
 
     def log_verbose(self, message, msg_type="INFO"):
         pass
+
+    def get_unique_clients(self):
+        """Get unique clients by IP, keeping only the standard port entries."""
+        unique_clients = {}
+        for ip, port in self.known_clients:
+            if ip not in unique_clients:
+                unique_clients[ip] = port
+            elif port == LSNP_PORT:  # Prefer standard port if available
+                unique_clients[ip] = port
+        return [(ip, port) for ip, port in unique_clients.items()]
 
     def toggle_verbose_mode(self):
         self.verbose = not self.verbose

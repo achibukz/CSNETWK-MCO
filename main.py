@@ -78,8 +78,17 @@ class LSNPClient:
 
             elif choice == "5":
                 print("Known clients:")
-                for ip, port in self.networkSystem.known_clients:
-                    print(f"  - {ip}:{port}")
+                unique_clients = self.networkSystem.get_unique_clients()
+                if unique_clients:
+                    for ip, port in unique_clients:
+                        print(f"  - {ip}:{port}")
+                else:
+                    print("  No known clients yet")
+                    
+                if self.networkSystem.verbose:
+                    print("\nAll client entries (including duplicates):")
+                    for ip, port in self.networkSystem.known_clients:
+                        print(f"    - {ip}:{port}")
 
             elif choice == "6":
                 self.show_known_peers()

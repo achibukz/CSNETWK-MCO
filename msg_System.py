@@ -30,6 +30,7 @@ class msgSystem:
             "USER_ID": user_id,
             "DISPLAY_NAME": display_name,
             "STATUS": status,
+            "LISTEN_PORT": self.network_system.port,  # Include our listening port
             "BROADCAST": True
         }
         
