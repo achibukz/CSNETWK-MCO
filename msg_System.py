@@ -11,6 +11,7 @@ class msgSystem:
         self.stored_posts = []  # Store valid posts
         self.stored_dms = []    # Store DMs
         self.following = set()  # Users we're following
+        self.processed_messages = set()  # Track processed message IDs to prevent duplicates
 
     def create_profile(self, user_id, display_name, status, avatar_path=None):
         self.user_id = user_id
@@ -149,10 +150,21 @@ class msgSystem:
         user_id = message.get("USER_ID")
         content = message.get("CONTENT")
         token = message.get("TOKEN")
+        message_id = message.get("MESSAGE_ID")
+        
+        # Check for duplicate messages
+        if message_id and message_id in self.processed_messages:
+            if self.netSystem.verbose:
+                print(f"[DEBUG] Ignoring duplicate POST: {message_id}")
+            return
         
         # Basic token validation (should be enhanced)
         if token and self.validate_basic_token(token):
             self.stored_posts.append(message)
+            
+            # Mark message as processed
+            if message_id:
+                self.processed_messages.add(message_id)
             
             # Get display name if known
             display_name = self.get_display_name(user_id)
@@ -167,10 +179,21 @@ class msgSystem:
         from_user = message.get("FROM")
         to_user = message.get("TO")
         content = message.get("CONTENT")
+        message_id = message.get("MESSAGE_ID")
+        
+        # Check for duplicate messages
+        if message_id and message_id in self.processed_messages:
+            if self.netSystem.verbose:
+                print(f"[DEBUG] Ignoring duplicate DM: {message_id}")
+            return
         
         # Only process if DM is for us
         if to_user == self.user_id:
             self.stored_dms.append(message)
+            
+            # Mark message as processed
+            if message_id:
+                self.processed_messages.add(message_id)
             
             display_name = self.get_display_name(from_user)
             
@@ -239,6 +262,7 @@ class msgSystem:
                         "USER_ID": self.user_id,
                         "DISPLAY_NAME": self.display_name,
                         "STATUS": self.status,
+                        "LISTEN_PORT": self.netSystem.port,  # Include our listening port
                         "BROADCAST": True
                     }
                     self.netSystem.send_message(message)
@@ -271,6 +295,22 @@ class msgSystem:
     def get_all_posts(self):  # Show all valid posts
         """Get all stored valid posts."""
         return self.stored_posts
+    
+    def clear_duplicate_posts(self):
+        """Remove duplicate posts based on MESSAGE_ID."""
+        seen_ids = set()
+        unique_posts = []
+        
+        for post in self.stored_posts:
+            msg_id = post.get("MESSAGE_ID")
+            if msg_id and msg_id not in seen_ids:
+                seen_ids.add(msg_id)
+                unique_posts.append(post)
+            elif not msg_id:  # Keep posts without MESSAGE_ID (shouldn't happen but just in case)
+                unique_posts.append(post)
+                
+        self.stored_posts = unique_posts
+        return len(self.stored_posts)
 
     def get_all_dms(self):  # Show all DMs
         """Get all stored DMs."""

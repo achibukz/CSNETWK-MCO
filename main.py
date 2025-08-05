@@ -126,7 +126,10 @@ class LSNPClient:
     def show_all_posts(self):
         """Show all valid posts."""
         print("\n=== All Valid Posts ===")
+        # Clean up any duplicates first
+        post_count = self.msgSystem.clear_duplicate_posts()
         posts = self.msgSystem.get_all_posts()
+        
         if posts:
             for post in posts:
                 user_id = post.get('USER_ID', 'Unknown')
