@@ -25,8 +25,11 @@ class msgSystem:
 
     def get_timestamp_str(self):
         """Get formatted timestamp string for logging."""
-        import datetime
-        return datetime.datetime.now().strftime('[%Y-%m-%d %H:%M:%S]')
+        # Only show timestamps in verbose mode
+        if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
+            import datetime
+            return datetime.datetime.now().strftime('[%Y-%m-%d %H:%M:%S] ')
+        return ""
 
     def create_profile(self, user_id, display_name, status, avatar_path=None):
         self.user_id = user_id

@@ -15,8 +15,11 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
 
     def get_timestamp_str(self):
         """Get formatted timestamp string for logging."""
-        import datetime
-        return datetime.datetime.now().strftime('[%Y-%m-%d %H:%M:%S]')
+        # Only show timestamps in verbose mode
+        if self.verbose:
+            import datetime
+            return datetime.datetime.now().strftime('[%Y-%m-%d %H:%M:%S] ')
+        return ""
 
     def setup_socket(self):
         self.serverSocket = socket(AF_INET, SOCK_DGRAM) # SOCK_DGRAM -> UDP
