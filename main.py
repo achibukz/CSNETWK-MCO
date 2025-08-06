@@ -66,10 +66,7 @@ class LSNPClient:
                 self.msgSystem.send_post(content)
 
             elif choice == "2":
-                target_ip = input("Enter target IP (default: 127.0.0.1): ").strip() or "127.0.0.1"
-                target_port = input(f"Enter target port (default: {LSNP_PORT}): ").strip()
-                target_port = int(target_port) if target_port else LSNP_PORT
-                self.send_hello(target_ip, target_port)
+                self.send_hello("", 0)  # Parameters not used anymore since it's a broadcast
 
             elif choice == "3":
                 to_user = input("Enter recipient user_id (e.g., user@127.0.0.1): ").strip()
@@ -257,7 +254,10 @@ class LSNPClient:
         message = {
             "TYPE": "HELLO",
             "DATA": f"{self.display_name} is online",
-            "LISTEN_PORT": self.listen_port
+            "USER_ID": self.user_id,
+            "DISPLAY_NAME": self.display_name,
+            "LISTEN_PORT": self.listen_port,
+            "BROADCAST": True
         }
         lsnp_format = self.networkSystem._dict_to_lsnp(message)
         print("LSNP HELLO Message:")
@@ -487,9 +487,12 @@ class LSNPClient:
             "TYPE": "HELLO",
             "BROADCAST": True,
             "DATA": f"{self.display_name} is online",
+            "USER_ID": self.user_id,
+            "DISPLAY_NAME": self.display_name,
             "LISTEN_PORT": self.listen_port
         }
         self.networkSystem.send_message(message)
+        print(f"[HELLO] Broadcasted presence to network")
 
 if __name__ == "__main__":
     import argparse

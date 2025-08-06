@@ -223,6 +223,8 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                 hello_data = message.get('DATA', 'Hello message')
                 listen_port = message.get('LISTEN_PORT', LSNP_PORT)
                 sender_ip = sender_addr[0]
+                sender_user_id = message.get('USER_ID')
+                sender_display_name = message.get('DISPLAY_NAME', 'Unknown User')
                 
                 # Add sender to known clients for peer discovery
                 client_tuple = (sender_ip, listen_port)
@@ -232,6 +234,36 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                         print(f"[HELLO] Added {sender_ip}:{listen_port} to known clients")
                 
                 print(f"[HELLO] {hello_data}")
+                
+                # If we have user info, create a peer entry and send PROFILE response
+                if self.msg_system and sender_user_id and sender_display_name:
+                    # Create peer entry from HELLO info
+                    self.msg_system.known_peers[sender_user_id] = {
+                        'display_name': sender_display_name,
+                        'status': 'Online',
+                        'avatar_type': None,
+                        'avatar_data': None
+                    }
+                    if self.verbose:
+                        print(f"[HELLO] Added peer: {sender_display_name} ({sender_user_id})")
+                    
+                    # Send PROFILE response if we have our own profile
+                    if hasattr(self.msg_system, 'user_id'):
+                        try:
+                            response_message = {
+                                "TYPE": MSG_PROFILE,
+                                "USER_ID": self.msg_system.user_id,
+                                "DISPLAY_NAME": self.msg_system.display_name,
+                                "STATUS": getattr(self.msg_system, 'status', 'Online'),
+                                "LISTEN_PORT": self.port,
+                                "BROADCAST": False  # Unicast response
+                            }
+                            self.send_message(response_message, target_ip=sender_ip, target_port=listen_port)
+                            if self.verbose:
+                                print(f"[HELLO] Sent PROFILE response to {sender_ip}:{listen_port}")
+                        except Exception as e:
+                            if self.verbose:
+                                print(f"[HELLO] Failed to send PROFILE response: {e}")
             else:
                 print(f"[WARN] Unknown message type: {msg_type}")
 
