@@ -17,6 +17,16 @@ class msgSystem:
         self.ack_timeout = 5  # seconds to wait for ACK before retry
         self.acks_sent = 0  # Counter for ACKs sent
         self.acks_received = 0  # Counter for ACKs received
+        
+        # Enhanced token validation
+        self.revoked_tokens = set()  # Store revoked tokens
+        self.valid_messages = []  # Store all messages with valid token structure
+        self.token_validation_log = []  # Log token validation attempts
+
+    def get_timestamp_str(self):
+        """Get formatted timestamp string for logging."""
+        import datetime
+        return datetime.datetime.now().strftime('[%Y-%m-%d %H:%M:%S]')
 
     def create_profile(self, user_id, display_name, status, avatar_path=None):
         self.user_id = user_id
@@ -72,7 +82,7 @@ class msgSystem:
         # Send to all followers individually (unicast)
         followers_list = self.get_followers_list()
         if not followers_list:
-            print(f"[POST] No followers to send to. Your post: '{content}'")
+            print(f"{self.get_timestamp_str()} [POST] No followers to send to. Your post: '{content}'")
             # Still store our own post locally
             self.stored_posts.append(message)
             return
@@ -97,21 +107,21 @@ class msgSystem:
                 
                 if self.netSystem.verbose:
                     display_name = self.get_display_name(follower_user_id)
-                    print(f"[DEBUG] Sent POST to follower: {display_name} ({follower_user_id})")
+                    print(f"{self.get_timestamp_str()} [DEBUG] Sent POST to follower: {display_name} ({follower_user_id})")
                     
             except Exception as e:
                 failed_count += 1
                 if self.netSystem.verbose:
                     display_name = self.get_display_name(follower_user_id)
-                    print(f"[ERROR] Failed to send POST to {display_name}: {e}")
+                    print(f"{self.get_timestamp_str()} [ERROR] Failed to send POST to {display_name}: {e}")
         
         # Store our own post locally
         self.stored_posts.append(message)
         
         # Show summary
-        print(f"[POST] Sent to {sent_count}/{len(followers_list)} followers: '{content}'")
+        print(f"{self.get_timestamp_str()} [POST] Sent to {sent_count}/{len(followers_list)} followers: '{content}'")
         if failed_count > 0:
-            print(f"[WARN] Failed to send to {failed_count} followers")
+            print(f"{self.get_timestamp_str()} [WARN] Failed to send to {failed_count} followers")
 
     def send_dm(self, to_user, content):
         """Send a direct message to a specific user."""
@@ -131,7 +141,7 @@ class msgSystem:
         
         # Send with ACK tracking
         self.send_message_with_ack(message, to_user)
-        print(f"[SENT DM] To {self.get_display_name(to_user)}: {content}")
+        print(f"{self.get_timestamp_str()} [SENT DM] To {self.get_display_name(to_user)}: {content}")
 
     def send_follow(self, target_user):
         """Send a FOLLOW message to a user."""
@@ -153,7 +163,7 @@ class msgSystem:
         
         # Add to our following list
         self.following.add(target_user)
-        print(f"[FOLLOW] Now following {self.get_display_name(target_user)}")
+        print(f"{self.get_timestamp_str()} [FOLLOW] Now following {self.get_display_name(target_user)}")
 
     def send_unfollow(self, target_user):
         """Send an UNFOLLOW message to a user."""
@@ -175,7 +185,7 @@ class msgSystem:
         
         # Remove from our following list
         self.following.discard(target_user)
-        print(f"[UNFOLLOW] No longer following {self.get_display_name(target_user)}")
+        print(f"{self.get_timestamp_str()} [UNFOLLOW] No longer following {self.get_display_name(target_user)}")
 
     def send_like(self, to_user, post_timestamp, action="LIKE"):
         """Send a LIKE message to a user for their post."""
@@ -198,7 +208,7 @@ class msgSystem:
         self.send_message_with_ack(message, to_user)
         
         display_name = self.get_display_name(to_user)
-        print(f"[LIKE] Sent {action.lower()} to {display_name}'s post")
+        print(f"{self.get_timestamp_str()} [LIKE] Sent {action.lower()} to {display_name}'s post")
 
     def follow_user(self, user_id):
         pass
@@ -226,6 +236,8 @@ class msgSystem:
             self.handle_unfollow_message(message)
         elif msg_type == MSG_ACK:
             self.handle_ack_message(message)
+        elif msg_type == MSG_REVOKE:
+            self.handle_revoke_message(message)
         
         # Send ACK for messages that require acknowledgment
         if msg_type in [MSG_DM, MSG_FOLLOW, MSG_UNFOLLOW, MSG_LIKE] and message.get("MESSAGE_ID"):
@@ -246,9 +258,9 @@ class msgSystem:
             }
             
             if not self.netSystem.verbose:
-                print(f"[PROFILE] {display_name}: {status}")
+                print(f"{self.get_timestamp_str()} [PROFILE] {display_name}: {status}")
             else:
-                print(f"[PROFILE] Updated profile for {user_id}: {display_name} - {status}")
+                print(f"{self.get_timestamp_str()} [PROFILE] Updated profile for {user_id}: {display_name} - {status}")
 
     def handle_post_message(self, message):
         """Handle incoming POST messages."""
@@ -269,9 +281,12 @@ class msgSystem:
                 print(f"[DEBUG] Ignoring POST from non-followed user: {user_id}")
             return
         
-        # Basic token validation (should be enhanced)
-        if token and self.validate_basic_token(token):
+        # Enhanced token validation
+        if token and self.validate_enhanced_token(token, SCOPE_BROADCAST, message_type="POST"):
             self.stored_posts.append(message)
+            
+            # Store as valid message
+            self.store_valid_message(message, {'token_valid': True, 'scope': SCOPE_BROADCAST})
             
             # Mark message as processed
             if message_id:
@@ -281,9 +296,11 @@ class msgSystem:
             display_name = self.get_display_name(user_id)
             
             if not self.netSystem.verbose:
-                print(f"[POST] {display_name}: {content}")
+                print(f"{self.get_timestamp_str()} [POST] {display_name}: {content}")
             else:
-                print(f"[POST] From {user_id} ({display_name}): {content}")
+                print(f"{self.get_timestamp_str()} [POST] From {user_id} ({display_name}): {content}")
+        elif self.netSystem.verbose:
+            print(f"{self.get_timestamp_str()} [DEBUG] POST rejected due to invalid token")
 
     def handle_dm_message(self, message):
         """Handle incoming DM messages."""
@@ -291,6 +308,7 @@ class msgSystem:
         to_user = message.get("TO")
         content = message.get("CONTENT")
         message_id = message.get("MESSAGE_ID")
+        token = message.get("TOKEN")
         
         # Check for duplicate messages
         if message_id and message_id in self.processed_messages:
@@ -298,20 +316,26 @@ class msgSystem:
                 print(f"[DEBUG] Ignoring duplicate DM: {message_id}")
             return
         
-        # Only process if DM is for us
+        # Only process if DM is for us and has valid token
         if to_user == self.user_id:
-            self.stored_dms.append(message)
-            
-            # Mark message as processed
-            if message_id:
-                self.processed_messages.add(message_id)
-            
-            display_name = self.get_display_name(from_user)
-            
-            if not self.netSystem.verbose:
-                print(f"[DM] {display_name}: {content}")
-            else:
-                print(f"[DM] From {from_user} ({display_name}): {content}")
+            if token and self.validate_enhanced_token(token, SCOPE_CHAT, message_type="DM"):
+                self.stored_dms.append(message)
+                
+                # Store as valid message
+                self.store_valid_message(message, {'token_valid': True, 'scope': SCOPE_CHAT})
+                
+                # Mark message as processed
+                if message_id:
+                    self.processed_messages.add(message_id)
+                
+                display_name = self.get_display_name(from_user)
+                
+                if not self.netSystem.verbose:
+                    print(f"{self.get_timestamp_str()} [DM] {display_name}: {content}")
+                else:
+                    print(f"{self.get_timestamp_str()} [DM] From {from_user} ({display_name}): {content}")
+            elif self.netSystem.verbose:
+                print(f"{self.get_timestamp_str()} [DEBUG] DM rejected due to invalid token")
 
     def handle_follow_message(self, message):
         """Handle incoming FOLLOW messages."""
@@ -319,13 +343,18 @@ class msgSystem:
         to_user = message.get("TO")
         token = message.get("TOKEN")
         
-        # Only process if FOLLOW is for us
-        if to_user == self.user_id and token and self.validate_basic_token(token):
+        # Only process if FOLLOW is for us and has valid token
+        if to_user == self.user_id and token and self.validate_enhanced_token(token, SCOPE_FOLLOW, message_type="FOLLOW"):
             # Add to our followers list
             self.followers.add(from_user)
             
+            # Store as valid message
+            self.store_valid_message(message, {'token_valid': True, 'scope': SCOPE_FOLLOW})
+            
             display_name = self.get_display_name(from_user)
-            print(f"[FOLLOW] {display_name} started following you")
+            print(f"{self.get_timestamp_str()} [FOLLOW] {display_name} started following you")
+        elif to_user == self.user_id and self.netSystem.verbose:
+            print(f"{self.get_timestamp_str()} [DEBUG] FOLLOW rejected due to invalid token")
 
     def handle_unfollow_message(self, message):
         """Handle incoming UNFOLLOW messages."""
@@ -333,13 +362,18 @@ class msgSystem:
         to_user = message.get("TO")
         token = message.get("TOKEN")
         
-        # Only process if UNFOLLOW is for us
-        if to_user == self.user_id and token and self.validate_basic_token(token):
+        # Only process if UNFOLLOW is for us and has valid token
+        if to_user == self.user_id and token and self.validate_enhanced_token(token, SCOPE_FOLLOW, message_type="UNFOLLOW"):
             # Remove from our followers list
             self.followers.discard(from_user)
             
+            # Store as valid message
+            self.store_valid_message(message, {'token_valid': True, 'scope': SCOPE_FOLLOW})
+            
             display_name = self.get_display_name(from_user)
-            print(f"[UNFOLLOW] {display_name} unfollowed you")
+            print(f"{self.get_timestamp_str()} [UNFOLLOW] {display_name} unfollowed you")
+        elif to_user == self.user_id and self.netSystem.verbose:
+            print(f"{self.get_timestamp_str()} [DEBUG] UNFOLLOW rejected due to invalid token")
 
     def handle_ping_message(self, message):
         """Handle incoming PING messages."""
@@ -351,7 +385,7 @@ class msgSystem:
             
             # Respond with our PROFILE if we haven't sent one recently
             if self.netSystem.verbose:
-                print(f"[PING] Received from {user_id}")
+                print(f"{self.get_timestamp_str()} [PING] Received from {user_id}")
             
             # Send PROFILE response (optional - helps with discovery)
             if hasattr(self, 'user_id'):
@@ -381,11 +415,11 @@ class msgSystem:
             
             self.netSystem.send_message(message, target_ip=ip_address, target_port=target_port)
             if self.netSystem.verbose:
-                print(f"[PROFILE] Sent response to {requesting_user}")
+                print(f"{self.get_timestamp_str()} [PROFILE] Sent response to {requesting_user}")
                 
         except Exception as e:
             if self.netSystem.verbose:
-                print(f"[ERROR] Failed to send PROFILE response: {e}")
+                print(f"{self.get_timestamp_str()} [ERROR] Failed to send PROFILE response: {e}")
 
     def handle_like_message(self, message):
         """Handle incoming LIKE messages."""
@@ -393,7 +427,53 @@ class msgSystem:
         action = message.get("ACTION", "LIKE")
         
         display_name = self.get_display_name(from_user)
-        print(f"[LIKE] {display_name} {action.lower()}d your post")
+        print(f"{self.get_timestamp_str()} [LIKE] {display_name} {action.lower()}d your post")
+
+    def handle_revoke_message(self, message):
+        """Handle incoming REVOKE messages."""
+        from_user = message.get("FROM")
+        revoked_token = message.get("REVOKED_TOKEN")
+        reason = message.get("REASON", "Token revoked by sender")
+        
+        if revoked_token and from_user:
+            # Verify the token belongs to the sender
+            try:
+                token_parts = revoked_token.split('|')
+                if len(token_parts) == 3:
+                    token_user = token_parts[0]
+                    if token_user == from_user:
+                        self.revoke_token(revoked_token, f"Revoked by {from_user}: {reason}")
+                        display_name = self.get_display_name(from_user)
+                        print(f"{self.get_timestamp_str()} [REVOKE] {display_name} revoked a token")
+                    elif self.netSystem.verbose:
+                        print(f"{self.get_timestamp_str()} [DEBUG] REVOKE rejected: token user mismatch")
+                elif self.netSystem.verbose:
+                    print(f"{self.get_timestamp_str()} [DEBUG] REVOKE rejected: invalid token format")
+            except Exception as e:
+                if self.netSystem.verbose:
+                    print(f"{self.get_timestamp_str()} [DEBUG] REVOKE processing error: {e}")
+
+    def send_revoke_message(self, token_to_revoke, reason="User requested revocation"):
+        """Send a REVOKE message to announce token revocation."""
+        timestamp = int(time.time())
+        message_id = f"{random.getrandbits(64):016x}"
+        
+        message = {
+            "TYPE": MSG_REVOKE,
+            "MESSAGE_ID": message_id,
+            "FROM": self.user_id,
+            "REVOKED_TOKEN": token_to_revoke,
+            "REASON": reason,
+            "TIMESTAMP": timestamp,
+            "BROADCAST": True
+        }
+        
+        # Revoke locally first
+        self.revoke_token(token_to_revoke, reason)
+        
+        # Broadcast revocation
+        self.netSystem.send_message(message)
+        print(f"{self.get_timestamp_str()} [REVOKE] Broadcasted token revocation")
 
     def send_ack(self, original_message):
         """Send an ACK message in response to a received message."""
@@ -428,11 +508,11 @@ class msgSystem:
             self.acks_sent += 1  # Increment counter
             
             if self.netSystem.verbose:
-                print(f"[ACK] Sent ACK for message {message_id} to {from_user}")
+                print(f"{self.get_timestamp_str()} [ACK] Sent ACK for message {message_id} to {from_user}")
                 
         except Exception as e:
             if self.netSystem.verbose:
-                print(f"[ERROR] Failed to send ACK: {e}")
+                print(f"{self.get_timestamp_str()} [ERROR] Failed to send ACK: {e}")
 
     def handle_ack_message(self, message):
         """Handle incoming ACK messages."""
@@ -447,7 +527,7 @@ class msgSystem:
             
             if self.netSystem.verbose:
                 display_name = self.get_display_name(from_user)
-                print(f"[ACK] Received ACK from {display_name} for message {ack_message_id}")
+                print(f"{self.get_timestamp_str()} [ACK] Received ACK from {display_name} for message {ack_message_id}")
 
     def send_message_with_ack(self, message, target_user_id):
         """Send a message and track it for ACK."""
@@ -476,11 +556,11 @@ class msgSystem:
             self.netSystem.send_message(message, target_ip=ip_address, target_port=target_port)
             
             if self.netSystem.verbose:
-                print(f"[SEND] Sent message {message_id} to {target_user_id} (waiting for ACK)")
+                print(f"{self.get_timestamp_str()} [SEND] Sent message {message_id} to {target_user_id} (waiting for ACK)")
                 
         except Exception as e:
             if self.netSystem.verbose:
-                print(f"[ERROR] Failed to send message with ACK: {e}")
+                print(f"{self.get_timestamp_str()} [ERROR] Failed to send message with ACK: {e}")
             # Remove from pending if send failed
             if message_id in self.pending_acks:
                 del self.pending_acks[message_id]
@@ -502,7 +582,7 @@ class msgSystem:
                     # Give up after max retries
                     to_remove.append(message_id)
                     if self.netSystem.verbose:
-                        print(f"[ACK] Message {message_id} failed after {MAX_RETRIES} retries")
+                        print(f"{self.get_timestamp_str()} [ACK] Message {message_id} failed after {MAX_RETRIES} retries")
         
         # Retry messages
         for message_id, ack_info in to_retry:
@@ -528,6 +608,125 @@ class msgSystem:
             return expiry > current_time
         except:
             return False
+
+    def validate_enhanced_token(self, token, required_scope, sender_ip=None, message_type=None):
+        """Enhanced token validation - checks format, expiration, scope, and revocation."""
+        timestamp = int(time.time())
+        validation_result = {
+            'valid': False,
+            'reason': '',
+            'timestamp': timestamp,
+            'token': token,
+            'required_scope': required_scope,
+            'sender_ip': sender_ip,
+            'message_type': message_type
+        }
+        
+        try:
+            # Check token format
+            parts = token.split('|')
+            if len(parts) != 3:
+                validation_result['reason'] = 'Invalid token format'
+                self.log_token_validation(validation_result)
+                return False
+            
+            user_id, expiry_str, token_scope = parts
+            
+            # Check expiration
+            try:
+                expiry = int(expiry_str)
+                current_time = int(time.time())
+                if expiry <= current_time:
+                    validation_result['reason'] = 'Token expired'
+                    self.log_token_validation(validation_result)
+                    return False
+            except ValueError:
+                validation_result['reason'] = 'Invalid expiry timestamp'
+                self.log_token_validation(validation_result)
+                return False
+            
+            # Check scope match
+            if token_scope != required_scope:
+                validation_result['reason'] = f'Scope mismatch: got {token_scope}, required {required_scope}'
+                self.log_token_validation(validation_result)
+                return False
+            
+            # Check revocation status
+            if token in self.revoked_tokens:
+                validation_result['reason'] = 'Token is revoked'
+                self.log_token_validation(validation_result)
+                return False
+            
+            # Verify sender IP matches token user_id (if provided)
+            if sender_ip and '@' in user_id:
+                token_ip = user_id.split('@')[1]
+                if token_ip != sender_ip:
+                    validation_result['reason'] = f'IP mismatch: token IP {token_ip}, sender IP {sender_ip}'
+                    self.log_token_validation(validation_result)
+                    return False
+            
+            # Token is valid
+            validation_result['valid'] = True
+            validation_result['reason'] = 'Valid token'
+            self.log_token_validation(validation_result)
+            return True
+            
+        except Exception as e:
+            validation_result['reason'] = f'Validation error: {str(e)}'
+            self.log_token_validation(validation_result)
+            return False
+
+    def log_token_validation(self, validation_result):
+        """Log token validation attempts for debugging and security auditing."""
+        self.token_validation_log.append(validation_result)
+        
+        # Keep only last 100 validation attempts to prevent memory bloat
+        if len(self.token_validation_log) > 100:
+            self.token_validation_log = self.token_validation_log[-100:]
+        
+        if self.netSystem.verbose:
+            status = "✓ VALID" if validation_result['valid'] else "✗ INVALID"
+            print(f"{self.get_timestamp_str()} [TOKEN] {status}: {validation_result['reason']} (scope: {validation_result['required_scope']})")
+
+    def revoke_token(self, token, reason="Manual revocation"):
+        """Revoke a token to prevent future use."""
+        self.revoked_tokens.add(token)
+        if self.netSystem.verbose:
+            print(f"{self.get_timestamp_str()} [TOKEN] Revoked token: {token[:20]}... (reason: {reason})")
+
+    def get_token_validation_stats(self):
+        """Get statistics about token validation."""
+        if not self.token_validation_log:
+            return {"total": 0, "valid": 0, "invalid": 0, "success_rate": 0}
+        
+        total = len(self.token_validation_log)
+        valid = sum(1 for v in self.token_validation_log if v['valid'])
+        invalid = total - valid
+        success_rate = (valid / total) * 100 if total > 0 else 0
+        
+        return {
+            "total": total,
+            "valid": valid,
+            "invalid": invalid,
+            "success_rate": round(success_rate, 2)
+        }
+
+    def store_valid_message(self, message, validation_info=None):
+        """Store messages with valid token structure for analysis."""
+        stored_entry = {
+            'message': message.copy(),
+            'timestamp': int(time.time()),
+            'validation_info': validation_info
+        }
+        self.valid_messages.append(stored_entry)
+        
+        # Keep only last 200 valid messages to prevent memory bloat
+        if len(self.valid_messages) > 200:
+            self.valid_messages = self.valid_messages[-200:]
+
+    def get_valid_messages(self):
+        """Get all stored messages with valid tokens."""
+        return self.valid_messages
 
     def display_message(self, message, verbose=False):
         pass

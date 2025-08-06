@@ -57,7 +57,10 @@ class LSNPClient:
             print("12. Show following/followers")
             print("13. Edit profile")
             print("14. Like/Unlike a post")
-            print("15. Quit")
+            print("15. Show token validation stats")
+            print("16. Show valid messages log")
+            print("17. Revoke a token")
+            print("18. Quit")
 
             choice = input("Enter choice: ").strip()
 
@@ -120,6 +123,15 @@ class LSNPClient:
                 self.like_post()
 
             elif choice == "15":
+                self.show_token_validation_stats()
+
+            elif choice == "16":
+                self.show_valid_messages_log()
+
+            elif choice == "17":
+                self.revoke_token_manually()
+
+            elif choice == "18":
                 print("Exiting...")
                 break
 
@@ -493,6 +505,84 @@ class LSNPClient:
         }
         self.networkSystem.send_message(message)
         print(f"[HELLO] Broadcasted presence to network")
+
+    def show_token_validation_stats(self):
+        """Show token validation statistics."""
+        print("\n=== Token Validation Statistics ===")
+        stats = self.msgSystem.get_token_validation_stats()
+        
+        print(f"Total validations: {stats['total']}")
+        print(f"Valid tokens: {stats['valid']}")
+        print(f"Invalid tokens: {stats['invalid']}")
+        print(f"Success rate: {stats['success_rate']}%")
+        
+        if stats['total'] > 0:
+            print(f"\nRevoked tokens: {len(self.msgSystem.revoked_tokens)}")
+            print(f"Valid messages stored: {len(self.msgSystem.valid_messages)}")
+
+    def show_valid_messages_log(self):
+        """Show log of all messages with valid tokens."""
+        print("\n=== Valid Messages Log ===")
+        valid_messages = self.msgSystem.get_valid_messages()
+        
+        if not valid_messages:
+            print("No valid messages recorded yet.")
+            return
+        
+        print(f"Showing last {min(10, len(valid_messages))} valid messages:")
+        for entry in valid_messages[-10:]:
+            message = entry['message']
+            timestamp = entry['timestamp']
+            validation_info = entry.get('validation_info', {})
+            
+            msg_type = message.get('TYPE', 'Unknown')
+            user_id = message.get('USER_ID') or message.get('FROM', 'Unknown')
+            scope = validation_info.get('scope', 'Unknown')
+            
+            # Format timestamp
+            import datetime
+            time_str = datetime.datetime.fromtimestamp(timestamp).strftime('%H:%M:%S')
+            
+            print(f"  [{time_str}] {msg_type} from {user_id} (scope: {scope})")
+
+    def revoke_token_manually(self):
+        """Manually revoke a token."""
+        print("\n=== Revoke Token ===")
+        print("1. Revoke token locally only")
+        print("2. Revoke token and broadcast revocation")
+        
+        revoke_choice = input("Enter choice: ").strip()
+        
+        print("\nEnter a token to revoke (format: user@ip|timestamp|scope):")
+        token = input("Token: ").strip()
+        
+        if not token:
+            print("No token provided.")
+            return
+        
+        # Validate token format
+        try:
+            parts = token.split('|')
+            if len(parts) != 3:
+                print("Invalid token format. Expected: user@ip|timestamp|scope")
+                return
+        except:
+            print("Invalid token format.")
+            return
+        
+        reason = input("Reason for revocation (optional): ").strip() or "Manual revocation"
+        
+        if revoke_choice == "1":
+            self.msgSystem.revoke_token(token, reason)
+            print(f"✅ Token revoked locally!")
+        elif revoke_choice == "2":
+            self.msgSystem.send_revoke_message(token, reason)
+            print(f"✅ Token revoked and revocation broadcasted!")
+        else:
+            print("Invalid choice.")
+            return
+            
+        print(f"Reason: {reason}")
 
 if __name__ == "__main__":
     import argparse

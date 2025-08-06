@@ -13,6 +13,11 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
         self.known_clients = set()
         self.msg_system = None  # Will be set by main.py
 
+    def get_timestamp_str(self):
+        """Get formatted timestamp string for logging."""
+        import datetime
+        return datetime.datetime.now().strftime('[%Y-%m-%d %H:%M:%S]')
+
     def setup_socket(self):
         self.serverSocket = socket(AF_INET, SOCK_DGRAM) # SOCK_DGRAM -> UDP
         self.serverSocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1) # allows socket to reuse address
@@ -21,7 +26,7 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
             try:
                 self.serverSocket.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)  # macOS fix
             except AttributeError:
-                print("[WARN] SO_REUSEPORT not supported on this platform")
+                print(f"{self.get_timestamp_str()} [WARN] SO_REUSEPORT not supported on this platform")
 
         #Prepare a sever socket - bind to all interfaces to receive from other devices
         self.serverSocket.bind(('0.0.0.0', self.port))
@@ -84,10 +89,10 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                         broadcast_addr = "255.255.255.255"  # Limited broadcast
                         clientSocket.sendto(lsnp_message.encode(), (broadcast_addr, LSNP_PORT))
                         if self.verbose:
-                            print(f"[BROADCAST] Sent to {broadcast_addr}:{LSNP_PORT}")
+                            print(f"{self.get_timestamp_str()}[BROADCAST] Sent to {broadcast_addr}:{LSNP_PORT}")
                     except Exception as e:
                         if self.verbose:
-                            print(f"[WARN] Broadcast failed: {e}")
+                            print(f"{self.get_timestamp_str()}[WARN] Broadcast failed: {e}")
                 else:
                     # Get our local IP for better self-detection
                     try:
@@ -108,13 +113,13 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                         print(f"[SEND] From {local_send_ip}:{local_send_port} To {target_ip}:{target_port}")
 
                         if self.verbose:
-                            print(f"[SEND] To {target_ip}:{target_port} -> {lsnp_message}")
+                            print(f"{self.get_timestamp_str()}[SEND] To {target_ip}:{target_port} -> {lsnp_message}")
                     elif self.verbose:
-                        print(f"Skipping unicast to self: {target_ip}:{target_port}")
+                        print(f"{self.get_timestamp_str()}Skipping unicast to self: {target_ip}:{target_port}")
 
         except Exception as e:
             if self.verbose:
-                print(f"[ERROR] Failed to send message: {e}")
+                print(f"{self.get_timestamp_str()}[ERROR] Failed to send message: {e}")
 
     def _dict_to_lsnp(self, message_dict):
         """Convert a dictionary to LSNP key-value format."""
@@ -143,14 +148,14 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
 
     def receive_message(self):
         if self.verbose:
-            print("RECEIVED!!!")
+            print(f"{self.get_timestamp_str()}RECEIVED!!!")
         try:
             data, addr = self.serverSocket.recvfrom(4096) # addr = ip, port
             raw_message = data.decode()
             message = self._lsnp_to_dict(raw_message)
 
             if self.verbose:
-                print(f"[RECEIVED] From {addr} -> {message}")
+                print(f"{self.get_timestamp_str()}[RECEIVED] From {addr} -> {message}")
 
             # Get the correct listening port from the message
             listening_port = message.get("LISTEN_PORT", LSNP_PORT)  # Use standard port as fallback
@@ -174,13 +179,13 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                 # Use USER_ID for self-detection (most reliable)
                 is_self = (user_id == our_user_id)
                 if self.verbose and is_self:
-                    print(f"Ignoring self message: USER_ID {user_id}")
+                    print(f"{self.get_timestamp_str()}Ignoring self message: USER_ID {user_id}")
             else:
                 # Fall back to IP/port detection for messages without USER_ID
                 is_self = (addr[0] == local_ip and int(listening_port) == self.port) or \
                          (addr[0] == "127.0.0.1" and int(listening_port) == self.port)
                 if self.verbose and is_self:
-                    print(f"Ignoring self message: IP/port {addr[0]}:{listening_port}")
+                    print(f"{self.get_timestamp_str()}Ignoring self message: IP/port {addr[0]}:{listening_port}")
             
             if not is_self:
                 # Add to known clients (set automatically prevents duplicates)
@@ -188,37 +193,37 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                 if client_tuple not in self.known_clients:
                     self.known_clients.add(client_tuple)
                     if self.verbose:
-                        print(f"Adding NEW client: {addr[0]}:{listening_port}")
+                        print(f"{self.get_timestamp_str()}Adding NEW client: {addr[0]}:{listening_port}")
                 elif self.verbose:
-                    print(f"Already known client: {addr[0]}:{listening_port}")
+                    print(f"{self.get_timestamp_str()}Already known client: {addr[0]}:{listening_port}")
 
             self.parse_message(message, addr)
 
         except Exception as e:
-            print(f"[ERROR] Failed to receive message: {e}")
+            print(f"{self.get_timestamp_str()}[ERROR] Failed to receive message: {e}")
 
     def parse_message(self, message, sender_addr):
         if self.verbose:
-            print("PARSING!!!")
+            print(f"{self.get_timestamp_str()}PARSING!!!")
         try:
             msg_type = message.get("TYPE")
             if self.verbose:
-                print(f"Message type: {msg_type}")
-                print(f"Full message: {message}")
+                print(f"{self.get_timestamp_str()}Message type: {msg_type}")
+                print(f"{self.get_timestamp_str()}Full message: {message}")
 
             # Route messages to appropriate systems
-            if msg_type in [MSG_PROFILE, MSG_POST, MSG_DM, MSG_PING, MSG_LIKE, MSG_FOLLOW, MSG_UNFOLLOW, MSG_ACK]:
+            if msg_type in [MSG_PROFILE, MSG_POST, MSG_DM, MSG_PING, MSG_LIKE, MSG_FOLLOW, MSG_UNFOLLOW, MSG_ACK, MSG_REVOKE]:
                 if self.msg_system:
                     self.msg_system.process_incoming_message(message)
                 else:
                     # Fallback if msg_system not set
-                    print(f"[{msg_type}] {message}")
+                    print(f"{self.get_timestamp_str()}[{msg_type}] {message}")
             elif msg_type in [MSG_TICTACTOE_INVITE, MSG_TICTACTOE_MOVE, MSG_TICTACTOE_RESULT]:
-                print(f"[GAME] {message}")
+                print(f"{self.get_timestamp_str()}[GAME] {message}")
             elif msg_type in [MSG_GROUP_CREATE, MSG_GROUP_UPDATE, MSG_GROUP_MESSAGE]:
-                print(f"[GROUP] {message}")
+                print(f"{self.get_timestamp_str()}[GROUP] {message}")
             elif msg_type in [MSG_FILE_OFFER, MSG_FILE_CHUNK, MSG_FILE_RECEIVED]:
-                print(f"[FILE] {message}")
+                print(f"{self.get_timestamp_str()}[FILE] {message}")
             elif msg_type == "HELLO":  # HELLO is not in specs, so keep as string
                 hello_data = message.get('DATA', 'Hello message')
                 listen_port = message.get('LISTEN_PORT', LSNP_PORT)
@@ -233,7 +238,7 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                     if self.verbose:
                         print(f"[HELLO] Added {sender_ip}:{listen_port} to known clients")
                 
-                print(f"[HELLO] {hello_data}")
+                print(f"{self.get_timestamp_str()}[HELLO] {hello_data}")
                 
                 # If we have user info, create a peer entry and send PROFILE response
                 if self.msg_system and sender_user_id and sender_display_name:
@@ -245,7 +250,7 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                         'avatar_data': None
                     }
                     if self.verbose:
-                        print(f"[HELLO] Added peer: {sender_display_name} ({sender_user_id})")
+                        print(f"{self.get_timestamp_str()}[HELLO] Added peer: {sender_display_name} ({sender_user_id})")
                     
                     # Send PROFILE response if we have our own profile
                     if hasattr(self.msg_system, 'user_id'):
@@ -260,15 +265,15 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                             }
                             self.send_message(response_message, target_ip=sender_ip, target_port=listen_port)
                             if self.verbose:
-                                print(f"[HELLO] Sent PROFILE response to {sender_ip}:{listen_port}")
+                                print(f"{self.get_timestamp_str()}[HELLO] Sent PROFILE response to {sender_ip}:{listen_port}")
                         except Exception as e:
                             if self.verbose:
-                                print(f"[HELLO] Failed to send PROFILE response: {e}")
+                                print(f"{self.get_timestamp_str()}[HELLO] Failed to send PROFILE response: {e}")
             else:
-                print(f"[WARN] Unknown message type: {msg_type}")
+                print(f"{self.get_timestamp_str()}[WARN] Unknown message type: {msg_type}")
 
         except Exception as e:
-            print(f"[ERROR] Failed to parse message: {e}")
+            print(f"{self.get_timestamp_str()}[ERROR] Failed to parse message: {e}")
 
     def set_msg_system(self, msg_system):
         """Set the message system for proper routing."""
