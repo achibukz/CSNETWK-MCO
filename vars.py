@@ -1,6 +1,6 @@
 # Network Configuration
 LSNP_PORT = 50999
-BROADCAST_INTERVAL = 30  # 5 minutes
+BROADCAST_INTERVAL = 300  # 5 minutes
 RETRY_TIMEOUT = 2  # seconds
 MAX_RETRIES = 3
 

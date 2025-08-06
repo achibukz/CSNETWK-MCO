@@ -485,11 +485,11 @@ class LSNPClient:
     def send_hello(self, target_ip, target_port):
         message = {
             "TYPE": "HELLO",
-            "BROADCAST": False,
+            "BROADCAST": True,
             "DATA": f"{self.display_name} is online",
             "LISTEN_PORT": self.listen_port
         }
-        self.networkSystem.send_message(message, target_ip=target_ip, target_port=target_port)
+        self.networkSystem.send_message(message)
 
 if __name__ == "__main__":
     import argparse

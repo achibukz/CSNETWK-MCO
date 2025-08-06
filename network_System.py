@@ -220,7 +220,18 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
             elif msg_type in [MSG_FILE_OFFER, MSG_FILE_CHUNK, MSG_FILE_RECEIVED]:
                 print(f"[FILE] {message}")
             elif msg_type == "HELLO":  # HELLO is not in specs, so keep as string
-                print(f"[HELLO] {message.get('DATA', 'Hello message')}")
+                hello_data = message.get('DATA', 'Hello message')
+                listen_port = message.get('LISTEN_PORT', LSNP_PORT)
+                sender_ip = sender_addr[0]
+                
+                # Add sender to known clients for peer discovery
+                client_tuple = (sender_ip, listen_port)
+                if client_tuple not in self.known_clients:
+                    self.known_clients.add(client_tuple)
+                    if self.verbose:
+                        print(f"[HELLO] Added {sender_ip}:{listen_port} to known clients")
+                
+                print(f"[HELLO] {hello_data}")
             else:
                 print(f"[WARN] Unknown message type: {msg_type}")
 
