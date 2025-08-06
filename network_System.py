@@ -207,7 +207,7 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                 print(f"Full message: {message}")
 
             # Route messages to appropriate systems
-            if msg_type in [MSG_PROFILE, MSG_POST, MSG_DM, MSG_PING, MSG_LIKE, MSG_FOLLOW, MSG_UNFOLLOW]:
+            if msg_type in [MSG_PROFILE, MSG_POST, MSG_DM, MSG_PING, MSG_LIKE, MSG_FOLLOW, MSG_UNFOLLOW, MSG_ACK]:
                 if self.msg_system:
                     self.msg_system.process_incoming_message(message)
                 else:

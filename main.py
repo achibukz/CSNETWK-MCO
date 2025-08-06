@@ -56,7 +56,8 @@ class LSNPClient:
             print("11. Unfollow user")
             print("12. Show following/followers")
             print("13. Edit profile")
-            print("14. Quit")
+            print("14. Like/Unlike a post")
+            print("15. Quit")
 
             choice = input("Enter choice: ").strip()
 
@@ -119,6 +120,9 @@ class LSNPClient:
                 self.edit_profile()
 
             elif choice == "14":
+                self.like_post()
+
+            elif choice == "15":
                 print("Exiting...")
                 break
 
@@ -429,6 +433,54 @@ class LSNPClient:
                 
         except Exception as e:
             print(f"❌ Failed to update profile: {e}")
+
+    def like_post(self):
+        """Like or unlike a post."""
+        print("\n=== Like/Unlike Post ===")
+        
+        # Show available posts
+        posts = self.msgSystem.get_all_posts()
+        if not posts:
+            print("No posts available to like.")
+            return
+        
+        print("Available posts:")
+        for i, post in enumerate(posts, 1):
+            user_id = post.get('USER_ID', 'Unknown')
+            content = post.get('CONTENT', 'No content')
+            timestamp = post.get('TIMESTAMP', 'No timestamp')
+            display_name = self.msgSystem.get_display_name(user_id)
+            print(f"  {i}. [{display_name}] {content[:50]}{'...' if len(content) > 50 else ''}")
+        
+        try:
+            choice = input("\nEnter post number to like/unlike: ").strip()
+            if not choice.isdigit():
+                print("Invalid input.")
+                return
+                
+            post_index = int(choice) - 1
+            if post_index < 0 or post_index >= len(posts):
+                print("Invalid post number.")
+                return
+            
+            selected_post = posts[post_index]
+            post_user = selected_post.get('USER_ID')
+            post_timestamp = selected_post.get('TIMESTAMP')
+            
+            if post_user == self.user_id:
+                print("You cannot like your own post.")
+                return
+            
+            action = input("Enter action (LIKE/UNLIKE) [default: LIKE]: ").strip().upper()
+            if action not in ['LIKE', 'UNLIKE']:
+                action = 'LIKE'
+            
+            self.msgSystem.send_like(post_user, post_timestamp, action)
+            
+        except ValueError:
+            print("Invalid input.")
+        except Exception as e:
+            print(f"Error: {e}")
 
     def send_hello(self, target_ip, target_port):
         message = {

@@ -13,6 +13,10 @@ class msgSystem:
         self.following = set()  # Users we're following
         self.followers = set()  # Users following us
         self.processed_messages = set()  # Track processed message IDs to prevent duplicates
+        self.pending_acks = {}  # Track messages waiting for ACK {message_id: {timestamp, retries, message}}
+        self.ack_timeout = 5  # seconds to wait for ACK before retry
+        self.acks_sent = 0  # Counter for ACKs sent
+        self.acks_received = 0  # Counter for ACKs received
 
     def create_profile(self, user_id, display_name, status, avatar_path=None):
         self.user_id = user_id
@@ -125,21 +129,9 @@ class msgSystem:
             "TOKEN": token
         }
         
-        # Send to specific user (unicast)
-        try:
-            # Extract IP from user_id
-            ip_address = to_user.rsplit('@', 1)[1] if '@' in to_user else "127.0.0.1"
-            # We need to find the port for this user from known_clients
-            target_port = LSNP_PORT  # Use constant instead of hardcoded 6969
-            for known_ip, known_port in self.netSystem.known_clients:
-                if known_ip == ip_address:
-                    target_port = known_port
-                    break
-            
-            self.netSystem.send_message(message, target_ip=ip_address, target_port=target_port)
-            print(f"[SENT DM] To {self.get_display_name(to_user)}: {content}")
-        except Exception as e:
-            print(f"[ERROR] Failed to send DM: {e}")
+        # Send with ACK tracking
+        self.send_message_with_ack(message, to_user)
+        print(f"[SENT DM] To {self.get_display_name(to_user)}: {content}")
 
     def send_follow(self, target_user):
         """Send a FOLLOW message to a user."""
@@ -156,29 +148,12 @@ class msgSystem:
             "TOKEN": token
         }
         
-        # Send to specific user (unicast)
-        try:
-            # Extract IP from user_id
-            ip_address = target_user.rsplit('@', 1)[1] if '@' in target_user else "127.0.0.1"
-            target_port = LSNP_PORT
-            
-            # Find the port for this user from known_clients
-            for known_ip, known_port in self.netSystem.known_clients:
-                if known_ip == ip_address:
-                    target_port = known_port
-                    break
-            
-            self.netSystem.send_message(message, target_ip=ip_address, target_port=target_port)
-            
-            # Add to our following list
-            self.following.add(target_user)
-            print(f"[FOLLOW] Now following {self.get_display_name(target_user)}")
-            
-            # Trigger a PING to the newly followed user to get their recent posts
-            self.request_recent_posts_from_user(target_user)
-            
-        except Exception as e:
-            print(f"[ERROR] Failed to send FOLLOW: {e}")
+        # Send with ACK tracking
+        self.send_message_with_ack(message, target_user)
+        
+        # Add to our following list
+        self.following.add(target_user)
+        print(f"[FOLLOW] Now following {self.get_display_name(target_user)}")
 
     def send_unfollow(self, target_user):
         """Send an UNFOLLOW message to a user."""
@@ -195,29 +170,35 @@ class msgSystem:
             "TOKEN": token
         }
         
-        # Send to specific user (unicast)
-        try:
-            # Extract IP from user_id
-            ip_address = target_user.rsplit('@', 1)[1] if '@' in target_user else "127.0.0.1"
-            target_port = LSNP_PORT
-            
-            # Find the port for this user from known_clients
-            for known_ip, known_port in self.netSystem.known_clients:
-                if known_ip == ip_address:
-                    target_port = known_port
-                    break
-            
-            self.netSystem.send_message(message, target_ip=ip_address, target_port=target_port)
-            
-            # Remove from our following list
-            self.following.discard(target_user)
-            print(f"[UNFOLLOW] No longer following {self.get_display_name(target_user)}")
-            
-        except Exception as e:
-            print(f"[ERROR] Failed to send UNFOLLOW: {e}")
+        # Send with ACK tracking
+        self.send_message_with_ack(message, target_user)
+        
+        # Remove from our following list
+        self.following.discard(target_user)
+        print(f"[UNFOLLOW] No longer following {self.get_display_name(target_user)}")
 
     def send_like(self, to_user, post_timestamp, action="LIKE"):
-        pass
+        """Send a LIKE message to a user for their post."""
+        timestamp = int(time.time())
+        message_id = f"{random.getrandbits(64):016x}"
+        token = f"{self.user_id}|{timestamp + 3600}|{SCOPE_BROADCAST}"
+        
+        message = {
+            "TYPE": MSG_LIKE,
+            "MESSAGE_ID": message_id,
+            "FROM": self.user_id,
+            "TO": to_user,
+            "ACTION": action,  # LIKE or UNLIKE
+            "POST_TIMESTAMP": post_timestamp,
+            "TIMESTAMP": timestamp,
+            "TOKEN": token
+        }
+        
+        # Send with ACK tracking
+        self.send_message_with_ack(message, to_user)
+        
+        display_name = self.get_display_name(to_user)
+        print(f"[LIKE] Sent {action.lower()} to {display_name}'s post")
 
     def follow_user(self, user_id):
         pass
@@ -243,8 +224,12 @@ class msgSystem:
             self.handle_follow_message(message)
         elif msg_type == MSG_UNFOLLOW:
             self.handle_unfollow_message(message)
-        elif msg_type == MSG_PING:
-            self.handle_ping_message(message)
+        elif msg_type == MSG_ACK:
+            self.handle_ack_message(message)
+        
+        # Send ACK for messages that require acknowledgment
+        if msg_type in [MSG_DM, MSG_FOLLOW, MSG_UNFOLLOW, MSG_LIKE] and message.get("MESSAGE_ID"):
+            self.send_ack(message)
 
     def handle_profile_message(self, message):
         """Handle incoming PROFILE messages."""
@@ -410,6 +395,125 @@ class msgSystem:
         display_name = self.get_display_name(from_user)
         print(f"[LIKE] {display_name} {action.lower()}d your post")
 
+    def send_ack(self, original_message):
+        """Send an ACK message in response to a received message."""
+        message_id = original_message.get("MESSAGE_ID")
+        from_user = original_message.get("FROM") or original_message.get("USER_ID")
+        
+        if not message_id or not from_user:
+            return
+        
+        ack_message = {
+            "TYPE": MSG_ACK,
+            "MESSAGE_ID": f"{random.getrandbits(64):016x}",
+            "ACK_MESSAGE_ID": message_id,
+            "FROM": self.user_id,
+            "TO": from_user,
+            "TIMESTAMP": int(time.time())
+        }
+        
+        try:
+            # Extract IP from user_id for unicast
+            ip_address = from_user.rsplit('@', 1)[1] if '@' in from_user else "127.0.0.1"
+            target_port = LSNP_PORT
+            
+            # Find the port for this user from known_clients
+            for known_ip, known_port in self.netSystem.known_clients:
+                if known_ip == ip_address:
+                    target_port = known_port
+                    break
+            
+            self.netSystem.send_message(ack_message, target_ip=ip_address, target_port=target_port)
+            
+            self.acks_sent += 1  # Increment counter
+            
+            if self.netSystem.verbose:
+                print(f"[ACK] Sent ACK for message {message_id} to {from_user}")
+                
+        except Exception as e:
+            if self.netSystem.verbose:
+                print(f"[ERROR] Failed to send ACK: {e}")
+
+    def handle_ack_message(self, message):
+        """Handle incoming ACK messages."""
+        ack_message_id = message.get("ACK_MESSAGE_ID")
+        from_user = message.get("FROM")
+        
+        if ack_message_id and ack_message_id in self.pending_acks:
+            # Remove from pending ACKs
+            del self.pending_acks[ack_message_id]
+            
+            self.acks_received += 1  # Increment counter
+            
+            if self.netSystem.verbose:
+                display_name = self.get_display_name(from_user)
+                print(f"[ACK] Received ACK from {display_name} for message {ack_message_id}")
+
+    def send_message_with_ack(self, message, target_user_id):
+        """Send a message and track it for ACK."""
+        message_id = message.get("MESSAGE_ID")
+        
+        # Store in pending ACKs
+        if message_id:
+            self.pending_acks[message_id] = {
+                'timestamp': int(time.time()),
+                'retries': 0,
+                'message': message.copy(),
+                'target_user': target_user_id
+            }
+        
+        # Send the message normally
+        try:
+            ip_address = target_user_id.rsplit('@', 1)[1] if '@' in target_user_id else "127.0.0.1"
+            target_port = LSNP_PORT
+            
+            # Find the port for this user from known_clients
+            for known_ip, known_port in self.netSystem.known_clients:
+                if known_ip == ip_address:
+                    target_port = known_port
+                    break
+            
+            self.netSystem.send_message(message, target_ip=ip_address, target_port=target_port)
+            
+            if self.netSystem.verbose:
+                print(f"[SEND] Sent message {message_id} to {target_user_id} (waiting for ACK)")
+                
+        except Exception as e:
+            if self.netSystem.verbose:
+                print(f"[ERROR] Failed to send message with ACK: {e}")
+            # Remove from pending if send failed
+            if message_id in self.pending_acks:
+                del self.pending_acks[message_id]
+
+    def check_pending_acks(self):
+        """Check for pending ACKs that need retry or timeout."""
+        current_time = int(time.time())
+        to_retry = []
+        to_remove = []
+        
+        for message_id, ack_info in self.pending_acks.items():
+            time_elapsed = current_time - ack_info['timestamp']
+            
+            if time_elapsed > self.ack_timeout:
+                if ack_info['retries'] < MAX_RETRIES:
+                    # Retry the message
+                    to_retry.append((message_id, ack_info))
+                else:
+                    # Give up after max retries
+                    to_remove.append(message_id)
+                    if self.netSystem.verbose:
+                        print(f"[ACK] Message {message_id} failed after {MAX_RETRIES} retries")
+        
+        # Retry messages
+        for message_id, ack_info in to_retry:
+            ack_info['retries'] += 1
+            ack_info['timestamp'] = current_time
+            self.send_message_with_ack(ack_info['message'], ack_info['target_user'])
+            
+        # Remove failed messages
+        for message_id in to_remove:
+            del self.pending_acks[message_id]
+
     def validate_basic_token(self, token):
         """Basic token validation - checks format and expiration."""
         try:
@@ -462,9 +566,19 @@ class msgSystem:
                         if self.netSystem.verbose:
                             print(f"[BROADCAST] Sent periodic PROFILE update")
         
+        def ack_monitor():
+            """Monitor pending ACKs and retry failed messages."""
+            while True:
+                time.sleep(1)  # Check every second
+                self.check_pending_acks()
+        
         # Start background thread for periodic broadcasting
         thread = threading.Thread(target=broadcast_profile, daemon=True)
         thread.start()
+        
+        # Start ACK monitoring thread
+        ack_thread = threading.Thread(target=ack_monitor, daemon=True)
+        ack_thread.start()
 
     def get_known_peers(self):
         pass
