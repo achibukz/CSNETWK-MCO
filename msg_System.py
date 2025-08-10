@@ -14,6 +14,7 @@ class msgSystem:
         self.following = set()  # Users we're following
         self.followers = set()  # Users following us
         self.processed_messages = set()  # Track processed message IDs to prevent duplicates
+        self.last_profile_received = {}  # Track last PROFILE message time per user to prevent spam
         self.pending_acks = {}  # Track messages waiting for ACK {message_id: {timestamp, retries, message}}
         self.ack_timeout = 5  # seconds to wait for ACK before retry
         self.acks_sent = 0  # Counter for ACKs sent
@@ -269,6 +270,22 @@ class msgSystem:
         user_id = message.get("USER_ID")
         display_name = message.get("DISPLAY_NAME")
         status = message.get("STATUS")
+        message_id = message.get("MESSAGE_ID")
+        current_time = int(time.time())
+        
+        # Check for duplicate messages by MESSAGE_ID
+        if message_id and message_id in self.processed_messages:
+            if self.netSystem.verbose:
+                print(f"[DEBUG] Ignoring duplicate PROFILE: {message_id}")
+            return
+        
+        # Check for recent PROFILE messages from same user (within 3 seconds)
+        if user_id in self.last_profile_received:
+            time_diff = current_time - self.last_profile_received[user_id]
+            if time_diff < 3:  # Ignore if received within last 3 seconds
+                if self.netSystem.verbose:
+                    print(f"[DEBUG] Ignoring recent PROFILE from {user_id} (received {time_diff}s ago)")
+                return
         
         if user_id and display_name:
             self.known_peers[user_id] = {
@@ -277,6 +294,13 @@ class msgSystem:
                 'avatar_type': message.get("AVATAR_TYPE"),
                 'avatar_data': message.get("AVATAR_DATA")
             }
+            
+            # Mark message as processed
+            if message_id:
+                self.processed_messages.add(message_id)
+            
+            # Update last received time for this user
+            self.last_profile_received[user_id] = current_time
             
             if not self.netSystem.verbose:
                 print(f"{self.get_timestamp_str()} [PROFILE] {display_name}: {status}")
