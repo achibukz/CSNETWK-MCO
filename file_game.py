@@ -718,7 +718,7 @@ class fileGameSystem:
         # Check for duplicate moves FIRST (idempotency)
         if self.handle_duplicate_move(game_id, turn):
             print(f"⚠️ Duplicate move detected for turn {turn}, ignoring")
-            if message.get('MESSAGE_ID'):
+            if message.get('MESSAGE_ID'): 
                 self.send_ack(message)
             return
         

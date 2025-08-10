@@ -20,6 +20,10 @@ class msgSystem:
         self.acks_sent = 0  # Counter for ACKs sent
         self.acks_received = 0  # Counter for ACKs received
         
+        # Group Management
+        self.groups = {}  # Store groups {group_id: {name, members, creator, created_time}}
+        self.group_messages = {}  # Store group messages {group_id: [messages]}
+        
         # Enhanced token validation
         self.revoked_tokens = set()  # Store revoked tokens
         self.valid_messages = []  # Store all messages with valid token structure
@@ -260,9 +264,15 @@ class msgSystem:
             self.handle_ack_message(message)
         elif msg_type == MSG_REVOKE:
             self.handle_revoke_message(message)
+        elif msg_type == MSG_GROUP_CREATE:
+            self.handle_group_create_message(message)
+        elif msg_type == MSG_GROUP_UPDATE:
+            self.handle_group_update_message(message)
+        elif msg_type == MSG_GROUP_MESSAGE:
+            self.handle_group_message(message)
         
         # Send ACK for messages that require acknowledgment
-        if msg_type in [MSG_DM, MSG_FOLLOW, MSG_UNFOLLOW, MSG_LIKE] and message.get("MESSAGE_ID"):
+        if msg_type in [MSG_DM, MSG_FOLLOW, MSG_UNFOLLOW, MSG_LIKE, MSG_GROUP_CREATE, MSG_GROUP_UPDATE, MSG_GROUP_MESSAGE] and message.get("MESSAGE_ID"):
             self.send_ack(message)
 
     def handle_profile_message(self, message):
@@ -922,6 +932,309 @@ class msgSystem:
 
     def get_peer_status(self, user_id):
         pass
+
+    # ============ GROUP MANAGEMENT METHODS ============
+    
+    def create_group(self, group_id, group_name, members):
+        """Create a new group and send GROUP_CREATE message to all members."""
+        # Validate group_id is unique locally
+        if group_id in self.groups:
+            print(f"❌ Group '{group_id}' already exists.")
+            return False
+        
+        # Ensure creator is in members list
+        if self.user_id not in members:
+            members.append(self.user_id)
+        
+        # Store group locally
+        timestamp = int(time.time())
+        self.groups[group_id] = {
+            'name': group_name,
+            'members': members,
+            'creator': self.user_id,
+            'created_time': timestamp
+        }
+        
+        # Initialize message storage for this group
+        self.group_messages[group_id] = []
+        
+        # Create GROUP_CREATE message
+        message_id = f"{random.getrandbits(64):016x}"
+        message = {
+            "TYPE": MSG_GROUP_CREATE,
+            "MESSAGE_ID": message_id,
+            "FROM": self.user_id,
+            "GROUP_ID": group_id,
+            "GROUP_NAME": group_name,
+            "MEMBERS": ",".join(members),
+            "TIMESTAMP": timestamp,
+            "TOKEN": f"{self.user_id}|{timestamp + 3600}|{SCOPE_GROUP}"
+        }
+        
+        # Send to all members
+        for member in members:
+            if member != self.user_id:  # Don't send to self
+                self.send_message_to_user(message, member)
+        
+        print(f"✅ Group '{group_name}' created with {len(members)} members.")
+        return True
+    
+    def update_group(self, group_id, add_members=None, remove_members=None):
+        """Update group membership and send GROUP_UPDATE message."""
+        if group_id not in self.groups:
+            print(f"❌ Group '{group_id}' not found.")
+            return False
+        
+        group = self.groups[group_id]
+        
+        # Check if user is authorized (creator or existing member)
+        if self.user_id not in group['members']:
+            print(f"❌ You are not a member of group '{group_id}'.")
+            return False
+        
+        # Process additions
+        if add_members:
+            for member in add_members:
+                if member not in group['members']:
+                    group['members'].append(member)
+        
+        # Process removals
+        if remove_members:
+            for member in remove_members:
+                if member in group['members'] and member != group['creator']:
+                    group['members'].remove(member)
+        
+        # Create GROUP_UPDATE message
+        timestamp = int(time.time())
+        message_id = f"{random.getrandbits(64):016x}"
+        message = {
+            "TYPE": MSG_GROUP_UPDATE,
+            "MESSAGE_ID": message_id,
+            "FROM": self.user_id,
+            "GROUP_ID": group_id,
+            "TIMESTAMP": timestamp,
+            "TOKEN": f"{self.user_id}|{timestamp + 3600}|{SCOPE_GROUP}"
+        }
+        
+        if add_members:
+            message["ADD"] = ",".join(add_members)
+        if remove_members:
+            message["REMOVE"] = ",".join(remove_members)
+        
+        # Send to all current members
+        for member in group['members']:
+            if member != self.user_id:  # Don't send to self
+                self.send_message_to_user(message, member)
+        
+        print(f"✅ Group '{group['name']}' updated.")
+        return True
+    
+    def send_group_message(self, group_id, content):
+        """Send a message to all members of a group."""
+        if group_id not in self.groups:
+            print(f"❌ Group '{group_id}' not found.")
+            return False
+        
+        group = self.groups[group_id]
+        
+        # Check if user is a member
+        if self.user_id not in group['members']:
+            print(f"❌ You are not a member of group '{group_id}'.")
+            return False
+        
+        # Create GROUP_MESSAGE
+        timestamp = int(time.time())
+        message_id = f"{random.getrandbits(64):016x}"
+        message = {
+            "TYPE": MSG_GROUP_MESSAGE,
+            "MESSAGE_ID": message_id,
+            "FROM": self.user_id,
+            "GROUP_ID": group_id,
+            "CONTENT": content,
+            "TIMESTAMP": timestamp,
+            "TOKEN": f"{self.user_id}|{timestamp + 3600}|{SCOPE_GROUP}"
+        }
+        
+        # Send to all members except self
+        for member in group['members']:
+            if member != self.user_id:
+                self.send_message_to_user(message, member)
+        
+        # Store message locally for our own record
+        self.group_messages[group_id].append({
+            'from': self.user_id,
+            'content': content,
+            'timestamp': timestamp,
+            'message_id': message_id
+        })
+        
+        display_name = self.get_display_name(self.user_id)
+        print(f"📤 [GROUP {group['name']}] {display_name}: {content}")
+        return True
+    
+    def handle_group_create_message(self, message):
+        """Handle incoming GROUP_CREATE messages."""
+        group_id = message.get("GROUP_ID")
+        group_name = message.get("GROUP_NAME")
+        members_str = message.get("MEMBERS", "")
+        from_user = message.get("FROM")
+        token = message.get("TOKEN")
+        
+        # Validate token
+        if not token or not self.validate_enhanced_token(token, SCOPE_GROUP, message_type="GROUP_CREATE"):
+            if self.netSystem.verbose:
+                print(f"[DEBUG] Invalid token for GROUP_CREATE from {from_user}")
+            return
+        
+        # Check if we're in the members list
+        members = [m.strip() for m in members_str.split(",") if m.strip()]
+        if self.user_id not in members:
+            if self.netSystem.verbose:
+                print(f"[DEBUG] Not a member of group {group_id}")
+            return
+        
+        # Store group
+        timestamp = message.get("TIMESTAMP", int(time.time()))
+        self.groups[group_id] = {
+            'name': group_name,
+            'members': members,
+            'creator': from_user,
+            'created_time': timestamp
+        }
+        
+        # Initialize message storage
+        self.group_messages[group_id] = []
+        
+        # Store valid message
+        self.store_valid_message(message, {'token_valid': True, 'scope': SCOPE_GROUP})
+        
+        # Non-verbose printing (as per spec)
+        print(f"📢 You've been added to {group_name}")
+    
+    def handle_group_update_message(self, message):
+        """Handle incoming GROUP_UPDATE messages."""
+        group_id = message.get("GROUP_ID")
+        from_user = message.get("FROM")
+        token = message.get("TOKEN")
+        add_members_str = message.get("ADD", "")
+        remove_members_str = message.get("REMOVE", "")
+        
+        # Validate token
+        if not token or not self.validate_enhanced_token(token, SCOPE_GROUP, message_type="GROUP_UPDATE"):
+            if self.netSystem.verbose:
+                print(f"[DEBUG] Invalid token for GROUP_UPDATE from {from_user}")
+            return
+        
+        # Check if group exists and we're a member
+        if group_id not in self.groups:
+            if self.netSystem.verbose:
+                print(f"[DEBUG] Unknown group {group_id}")
+            return
+        
+        group = self.groups[group_id]
+        if self.user_id not in group['members']:
+            if self.netSystem.verbose:
+                print(f"[DEBUG] Not a member of group {group_id}")
+            return
+        
+        # Process updates
+        if add_members_str:
+            add_members = [m.strip() for m in add_members_str.split(",") if m.strip()]
+            for member in add_members:
+                if member not in group['members']:
+                    group['members'].append(member)
+        
+        if remove_members_str:
+            remove_members = [m.strip() for m in remove_members_str.split(",") if m.strip()]
+            for member in remove_members:
+                if member in group['members'] and member != group['creator']:
+                    group['members'].remove(member)
+        
+        # Store valid message
+        self.store_valid_message(message, {'token_valid': True, 'scope': SCOPE_GROUP})
+        
+        # Non-verbose printing (as per spec)
+        print(f"📢 The group \"{group['name']}\" member list was updated.")
+    
+    def handle_group_message(self, message):
+        """Handle incoming GROUP_MESSAGE messages."""
+        group_id = message.get("GROUP_ID")
+        content = message.get("CONTENT")
+        from_user = message.get("FROM")
+        token = message.get("TOKEN")
+        timestamp = message.get("TIMESTAMP", int(time.time()))
+        message_id = message.get("MESSAGE_ID")
+        
+        # Validate token
+        if not token or not self.validate_enhanced_token(token, SCOPE_GROUP, message_type="GROUP_MESSAGE"):
+            if self.netSystem.verbose:
+                print(f"[DEBUG] Invalid token for GROUP_MESSAGE from {from_user}")
+            return
+        
+        # Check if group exists and we're a member
+        if group_id not in self.groups:
+            if self.netSystem.verbose:
+                print(f"[DEBUG] Unknown group {group_id}")
+            return
+        
+        group = self.groups[group_id]
+        if self.user_id not in group['members']:
+            if self.netSystem.verbose:
+                print(f"[DEBUG] Not a member of group {group_id}")
+            return
+        
+        # Store message
+        self.group_messages[group_id].append({
+            'from': from_user,
+            'content': content,
+            'timestamp': timestamp,
+            'message_id': message_id
+        })
+        
+        # Store valid message
+        self.store_valid_message(message, {'token_valid': True, 'scope': SCOPE_GROUP})
+        
+        # Non-verbose printing (as per spec)
+        display_name = self.get_display_name(from_user)
+        print(f"📩 [GROUP {group['name']}] {display_name}: {content}")
+    
+    def get_user_groups(self):
+        """Get all groups the user belongs to."""
+        user_groups = []
+        for group_id, group_data in self.groups.items():
+            if self.user_id in group_data['members']:
+                user_groups.append({
+                    'group_id': group_id,
+                    'name': group_data['name'],
+                    'members': group_data['members'],
+                    'creator': group_data['creator'],
+                    'member_count': len(group_data['members'])
+                })
+        return user_groups
+    
+    def get_group_members(self, group_id):
+        """Get members of a specific group."""
+        if group_id not in self.groups:
+            return None
+        return self.groups[group_id]['members']
+    
+    def get_group_messages(self, group_id):
+        """Get messages for a specific group."""
+        if group_id not in self.group_messages:
+            return []
+        return self.group_messages[group_id]
+    
+    def send_message_to_user(self, message, target_user):
+        """Send a message to a specific user via unicast."""
+        try:
+            # Extract IP from user_id
+            target_ip = target_user.split('@')[-1] if '@' in target_user else "127.0.0.1"
+            self.netSystem.send_message(message, target_ip=target_ip, target_port=LSNP_PORT)
+        except Exception as e:
+            if self.netSystem.verbose:
+                print(f"[ERROR] Failed to send message to {target_user}: {e}")
+    
+    # ============ END GROUP MANAGEMENT ============
 
 """
 Message Types:

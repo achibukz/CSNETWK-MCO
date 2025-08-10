@@ -241,7 +241,10 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                 else:
                     self.log_message(f"[GAME]", message)
             elif msg_type in [MSG_GROUP_CREATE, MSG_GROUP_UPDATE, MSG_GROUP_MESSAGE]:
-                self.log_message(f"[GROUP]", message)
+                if hasattr(self, 'msg_system') and self.msg_system:
+                    self.msg_system.process_incoming_message(message)
+                else:
+                    self.log_message(f"[GROUP]", message)
             elif msg_type in [MSG_FILE_OFFER, MSG_FILE_CHUNK, MSG_FILE_RECEIVED]:
                 if msg_type == MSG_FILE_OFFER:
                     if hasattr(self, 'file_game_system') and self.file_game_system:

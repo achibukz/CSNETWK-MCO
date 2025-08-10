@@ -62,7 +62,13 @@ class LSNPClient:
             print("18. 🎮 Tic-Tac-Toe Game")
             print("19. Send File Offer")
             print("20. Show Pending File Offers")
-            print("21. Quit")
+            print("21. 👥 Create Group")
+            print("22. 👥 Update Group")
+            print("23. 👥 Send Group Message")
+            print("24. 👥 Show My Groups")
+            print("25. 👥 Show Group Members")
+            print("26. 👥 Show Group Messages")
+            print("27. Quit")
 
             choice = input("Enter choice: ").strip()
 
@@ -149,6 +155,24 @@ class LSNPClient:
                     print("No pending file offers.")
 
             elif choice == "21":
+                self.create_group()
+
+            elif choice == "22":
+                self.update_group()
+
+            elif choice == "23":
+                self.send_group_message()
+
+            elif choice == "24":
+                self.show_my_groups()
+
+            elif choice == "25":
+                self.show_group_members()
+
+            elif choice == "26":
+                self.show_group_messages()
+
+            elif choice == "27":
                 print("Exiting...")
                 break
 
@@ -955,6 +979,309 @@ class LSNPClient:
         # Call your accept logic here, e.g.:
         self.msgSystem.accept_file_offer(file_id, from_user)
         print(f"Accepted file offer {file_id} from {from_user}.")
+
+    # ============ GROUP MANAGEMENT METHODS ============
+
+    def create_group(self):
+        """Create a new group."""
+        print("\n=== Create Group ===")
+        
+        group_id = input("Enter group ID (alphanumeric): ").strip()
+        if not group_id:
+            print("Group ID cannot be empty.")
+            return
+        
+        group_name = input("Enter group name: ").strip()
+        if not group_name:
+            print("Group name cannot be empty.")
+            return
+        
+        print("\nAdd members to the group:")
+        print("Available users:")
+        peers = self.msgSystem.get_known_peers()
+        if not peers:
+            print("No known peers available.")
+            return
+        
+        for i, (user_id, info) in enumerate(peers.items(), 1):
+            display_name = info.get('display_name', user_id)
+            print(f"  {i}. {display_name} ({user_id})")
+        
+        members = [self.user_id]  # Creator is always a member
+        
+        while True:
+            choice = input("\nEnter user number to add (or 'done' to finish): ").strip().lower()
+            if choice == 'done':
+                break
+            
+            try:
+                idx = int(choice) - 1
+                user_list = list(peers.keys())
+                if 0 <= idx < len(user_list):
+                    selected_user = user_list[idx]
+                    if selected_user not in members:
+                        members.append(selected_user)
+                        display_name = peers[selected_user].get('display_name', selected_user)
+                        print(f"✅ Added {display_name}")
+                    else:
+                        print("User already in group.")
+                else:
+                    print("Invalid user number.")
+            except ValueError:
+                print("Invalid input.")
+        
+        if len(members) < 2:
+            print("A group must have at least 2 members.")
+            return
+        
+        success = self.msgSystem.create_group(group_id, group_name, members)
+        if success:
+            print(f"📢 Group '{group_name}' created successfully!")
+
+    def update_group(self):
+        """Update group membership."""
+        print("\n=== Update Group ===")
+        
+        groups = self.msgSystem.get_user_groups()
+        if not groups:
+            print("You are not a member of any groups.")
+            return
+        
+        print("Your groups:")
+        for i, group in enumerate(groups, 1):
+            print(f"  {i}. {group['name']} ({group['group_id']}) - {group['member_count']} members")
+        
+        try:
+            choice = input("\nSelect group number: ").strip()
+            idx = int(choice) - 1
+            if idx < 0 or idx >= len(groups):
+                print("Invalid group number.")
+                return
+            
+            selected_group = groups[idx]
+            group_id = selected_group['group_id']
+            
+            print(f"\nUpdating group: {selected_group['name']}")
+            print("1. Add members")
+            print("2. Remove members")
+            print("3. Both")
+            
+            action = input("Choose action: ").strip()
+            
+            add_members = []
+            remove_members = []
+            
+            if action in ['1', '3']:
+                # Add members
+                peers = self.msgSystem.get_known_peers()
+                current_members = selected_group['members']
+                available_users = {uid: info for uid, info in peers.items() if uid not in current_members}
+                
+                if available_users:
+                    print("\nAvailable users to add:")
+                    for i, (user_id, info) in enumerate(available_users.items(), 1):
+                        display_name = info.get('display_name', user_id)
+                        print(f"  {i}. {display_name} ({user_id})")
+                    
+                    while True:
+                        choice = input("Enter user number to add (or 'done'): ").strip().lower()
+                        if choice == 'done':
+                            break
+                        try:
+                            idx = int(choice) - 1
+                            user_list = list(available_users.keys())
+                            if 0 <= idx < len(user_list):
+                                add_members.append(user_list[idx])
+                                print(f"✅ Will add {available_users[user_list[idx]].get('display_name', user_list[idx])}")
+                            else:
+                                print("Invalid user number.")
+                        except ValueError:
+                            print("Invalid input.")
+                else:
+                    print("No available users to add.")
+            
+            if action in ['2', '3']:
+                # Remove members
+                current_members = [m for m in selected_group['members'] if m != self.user_id and m != selected_group['creator']]
+                if current_members:
+                    print("\nCurrent members (excluding creator):")
+                    for i, member in enumerate(current_members, 1):
+                        display_name = self.msgSystem.get_display_name(member)
+                        print(f"  {i}. {display_name} ({member})")
+                    
+                    while True:
+                        choice = input("Enter member number to remove (or 'done'): ").strip().lower()
+                        if choice == 'done':
+                            break
+                        try:
+                            idx = int(choice) - 1
+                            if 0 <= idx < len(current_members):
+                                remove_members.append(current_members[idx])
+                                display_name = self.msgSystem.get_display_name(current_members[idx])
+                                print(f"✅ Will remove {display_name}")
+                            else:
+                                print("Invalid member number.")
+                        except ValueError:
+                            print("Invalid input.")
+                else:
+                    print("No members available to remove.")
+            
+            if add_members or remove_members:
+                success = self.msgSystem.update_group(group_id, add_members, remove_members)
+                if success:
+                    print("✅ Group updated successfully!")
+            else:
+                print("No changes made.")
+                
+        except ValueError:
+            print("Invalid input.")
+
+    def send_group_message(self):
+        """Send a message to a group."""
+        print("\n=== Send Group Message ===")
+        
+        groups = self.msgSystem.get_user_groups()
+        if not groups:
+            print("You are not a member of any groups.")
+            return
+        
+        print("Your groups:")
+        for i, group in enumerate(groups, 1):
+            print(f"  {i}. {group['name']} ({group['group_id']}) - {group['member_count']} members")
+        
+        try:
+            choice = input("\nSelect group number: ").strip()
+            idx = int(choice) - 1
+            if idx < 0 or idx >= len(groups):
+                print("Invalid group number.")
+                return
+            
+            selected_group = groups[idx]
+            group_id = selected_group['group_id']
+            
+            content = input(f"\nEnter message for '{selected_group['name']}': ").strip()
+            if not content:
+                print("Message cannot be empty.")
+                return
+            
+            success = self.msgSystem.send_group_message(group_id, content)
+            if success:
+                print("📤 Message sent to group!")
+                
+        except ValueError:
+            print("Invalid input.")
+
+    def show_my_groups(self):
+        """Show all groups the user belongs to."""
+        print("\n=== My Groups ===")
+        
+        groups = self.msgSystem.get_user_groups()
+        if not groups:
+            print("You are not a member of any groups.")
+            return
+        
+        for group in groups:
+            creator_name = self.msgSystem.get_display_name(group['creator'])
+            print(f"\n📁 {group['name']} (ID: {group['group_id']})")
+            print(f"   Creator: {creator_name}")
+            print(f"   Members: {group['member_count']}")
+            
+            # Show member names
+            member_names = []
+            for member in group['members']:
+                display_name = self.msgSystem.get_display_name(member)
+                if member == group['creator']:
+                    member_names.append(f"{display_name} (creator)")
+                elif member == self.user_id:
+                    member_names.append(f"{display_name} (you)")
+                else:
+                    member_names.append(display_name)
+            
+            print(f"   {', '.join(member_names)}")
+
+    def show_group_members(self):
+        """Show members of a specific group."""
+        print("\n=== Group Members ===")
+        
+        groups = self.msgSystem.get_user_groups()
+        if not groups:
+            print("You are not a member of any groups.")
+            return
+        
+        print("Your groups:")
+        for i, group in enumerate(groups, 1):
+            print(f"  {i}. {group['name']} ({group['group_id']})")
+        
+        try:
+            choice = input("\nSelect group number: ").strip()
+            idx = int(choice) - 1
+            if idx < 0 or idx >= len(groups):
+                print("Invalid group number.")
+                return
+            
+            selected_group = groups[idx]
+            print(f"\n👥 Members of '{selected_group['name']}':")
+            
+            for member in selected_group['members']:
+                display_name = self.msgSystem.get_display_name(member)
+                role = ""
+                if member == selected_group['creator']:
+                    role = " (creator)"
+                elif member == self.user_id:
+                    role = " (you)"
+                
+                print(f"   • {display_name} ({member}){role}")
+                
+        except ValueError:
+            print("Invalid input.")
+
+    def show_group_messages(self):
+        """Show messages for a specific group."""
+        print("\n=== Group Messages ===")
+        
+        groups = self.msgSystem.get_user_groups()
+        if not groups:
+            print("You are not a member of any groups.")
+            return
+        
+        print("Your groups:")
+        for i, group in enumerate(groups, 1):
+            print(f"  {i}. {group['name']} ({group['group_id']})")
+        
+        try:
+            choice = input("\nSelect group number: ").strip()
+            idx = int(choice) - 1
+            if idx < 0 or idx >= len(groups):
+                print("Invalid group number.")
+                return
+            
+            selected_group = groups[idx]
+            group_id = selected_group['group_id']
+            
+            messages = self.msgSystem.get_group_messages(group_id)
+            print(f"\n💬 Messages in '{selected_group['name']}':")
+            
+            if not messages:
+                print("   No messages yet.")
+                return
+            
+            for msg in messages[-10:]:  # Show last 10 messages
+                from_user = msg['from']
+                display_name = self.msgSystem.get_display_name(from_user)
+                content = msg['content']
+                
+                # Format timestamp
+                timestamp = msg['timestamp']
+                import datetime
+                dt = datetime.datetime.fromtimestamp(timestamp)
+                time_str = dt.strftime('%H:%M:%S')
+                
+                print(f"   [{time_str}] {display_name}: {content}")
+                
+        except ValueError:
+            print("Invalid input.")
+
+    # ============ END GROUP MANAGEMENT ============
 
 if __name__ == "__main__":
     import argparse
