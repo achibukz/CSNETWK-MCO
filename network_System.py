@@ -32,14 +32,17 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
             
         with self.log_lock:
             if show_full and isinstance(message, dict):
-                print(f"\n{self.get_timestamp_str()}{category}: {{")
-                # Format the message dictionary nicely
+                # Build the entire message as one string for atomic printing
+                output_lines = []
+                output_lines.append(f"\n{self.get_timestamp_str()}{category}: {{")
                 for key, value in message.items():
                     if isinstance(value, str):
-                        print(f"\t'{key}': '{value}',")
+                        output_lines.append(f"\t'{key}': '{value}',")
                     else:
-                        print(f"\t'{key}': {value},")
-                print("}\n")
+                        output_lines.append(f"\t'{key}': {value},")
+                output_lines.append("}\n")
+                # Print as one atomic operation
+                print("\n".join(output_lines))
             else:
                 print(f"{self.get_timestamp_str()}{category}: {message}")
 
@@ -164,9 +167,6 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
             raw_message = data.decode()
             message = self._lsnp_to_dict(raw_message)
 
-            if self.verbose:
-                self.log_message(f"[RECEIVED] From {addr}", message)
-
             # Get the correct listening port from the message
             listening_port = message.get("LISTEN_PORT", LSNP_PORT)  # Use standard port as fallback
             
@@ -192,6 +192,10 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                 # Fall back to IP/port detection for messages without USER_ID
                 is_self = (addr[0] == local_ip and int(listening_port) == self.port) or \
                          (addr[0] == "127.0.0.1" and int(listening_port) == self.port)
+
+            # Only log received messages from OTHER users, not our own
+            if self.verbose and not is_self:
+                self.log_message(f"[RECEIVED] From {addr}", message)
             
             if not is_self:
                 # Add to known clients (set automatically prevents duplicates)
@@ -201,16 +205,14 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                     if self.verbose:
                         print(f"{self.get_timestamp_str()}[NEW CLIENT] {addr[0]}:{listening_port}")
 
-            self.parse_message(message, addr)
+            self.parse_message(message, addr, is_self)
 
         except Exception as e:
             print(f"{self.get_timestamp_str()}[ERROR] Failed to receive message: {e}")
 
-    def parse_message(self, message, sender_addr):
+    def parse_message(self, message, sender_addr, is_self=False):
         try:
             msg_type = message.get("TYPE")
-            if self.verbose:
-                self.log_message(f"[PARSING] Message type: {msg_type}", message)
 
             # Route messages to appropriate systems
             if msg_type in [MSG_PROFILE, MSG_POST, MSG_DM, MSG_PING, MSG_LIKE, MSG_FOLLOW, MSG_UNFOLLOW, MSG_ACK, MSG_REVOKE]:
@@ -256,6 +258,10 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                     else:
                         print(f"{self.get_timestamp_str()}[FILE] {message}")
             elif msg_type == "HELLO":  # HELLO is not in specs, so keep as string
+                # Skip processing our own HELLO messages
+                if is_self:
+                    return
+                    
                 hello_data = message.get('DATA', 'Hello message')
                 listen_port = message.get('LISTEN_PORT', LSNP_PORT)
                 sender_ip = sender_addr[0]

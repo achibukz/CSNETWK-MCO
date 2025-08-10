@@ -35,14 +35,17 @@ class msgSystem:
     def log_message(self, category, message, show_full=True):
         """Log message in the new clean format."""
         if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose and show_full:
-            print(f"\n{self.get_timestamp_str()}{category}: {{")
-            # Format the message dictionary nicely
+            # Build the entire message as one string for atomic printing
+            output_lines = []
+            output_lines.append(f"\n{self.get_timestamp_str()}{category}: {{")
             for key, value in message.items():
                 if isinstance(value, str):
-                    print(f"\t'{key}': '{value}',")
+                    output_lines.append(f"\t'{key}': '{value}',")
                 else:
-                    print(f"\t'{key}': {value},")
-            print("}\n")
+                    output_lines.append(f"\t'{key}': {value},")
+            output_lines.append("}\n")
+            # Print as one atomic operation
+            print("\n".join(output_lines))
         elif hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
             print(f"{self.get_timestamp_str()}{category}: {message}")
 
