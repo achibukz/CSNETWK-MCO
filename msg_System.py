@@ -1029,6 +1029,24 @@ class msgSystem:
         if add_members:
             all_affected_members.update(add_members)
         
+        # For newly added members, send GROUP_CREATE first (in case they don't know about the group)
+        if add_members:
+            group_create_message = {
+                "TYPE": MSG_GROUP_CREATE,
+                "MESSAGE_ID": f"{random.getrandbits(64):016x}",
+                "FROM": self.user_id,
+                "GROUP_ID": group_id,
+                "GROUP_NAME": group['name'],
+                "MEMBERS": ",".join(group['members']),  # Current member list after updates
+                "TIMESTAMP": timestamp,
+                "TOKEN": f"{self.user_id}|{timestamp + 3600}|{SCOPE_GROUP}"
+            }
+            
+            for new_member in add_members:
+                if new_member != self.user_id:
+                    self.send_message_to_user(group_create_message, new_member)
+        
+        # Then send GROUP_UPDATE to all affected members
         for member in all_affected_members:
             if member != self.user_id:  # Don't send to self
                 self.send_message_to_user(message, member)
@@ -1132,7 +1150,7 @@ class msgSystem:
                 print(f"[DEBUG] Invalid token for GROUP_UPDATE from {from_user}")
             return
         
-        # Check if group exists
+        # Check if group exists  
         if group_id not in self.groups:
             if self.netSystem.verbose:
                 print(f"[DEBUG] Unknown group {group_id}")
