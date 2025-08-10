@@ -10,7 +10,7 @@ from vars import *
 class fileGameSystem:
     def __init__(self, netSystem):
         self.netSystem = netSystem
-        self.user_id = getattr(self.netSystem.msg_system, 'user_id', 'unknown@127.0.0.1')
+        # Don't store user_id at init - get it dynamically when needed
         
         # Game state management
         self.active_games = {}  # {game_id: game_data}
@@ -21,6 +21,12 @@ class fileGameSystem:
         self.pending_file_offers = {}   # {file_id: offer_data}
         self.incoming_files = {}        # {file_id: {chunks, metadata}}
         self.outgoing_files = {}        # {file_id: file_info}
+
+    def get_user_id(self):
+        """Get current user ID from message system."""
+        if hasattr(self.netSystem, 'msg_system') and self.netSystem.msg_system:
+            return getattr(self.netSystem.msg_system, 'user_id', 'unknown@127.0.0.1')
+        return 'unknown@127.0.0.1'
 
     def get_timestamp_str(self):
         """Get formatted timestamp string for logging."""
@@ -78,12 +84,13 @@ class fileGameSystem:
         
         timestamp = int(time.time())
         ttl = 3600  # 1 hour TTL
-        token = f"{self.user_id}|{timestamp + ttl}|{SCOPE_FILE}"
+        user_id = self.get_user_id()
+        token = f"{user_id}|{timestamp + ttl}|{SCOPE_FILE}"
         
         # Create FILE_OFFER message according to LSNP specs
         file_offer_message = {
             "TYPE": MSG_FILE_OFFER,
-            "FROM": self.user_id,
+            "FROM": user_id,
             "TO": to_user,
             "FILENAME": filename,
             "FILESIZE": str(filesize),  # String as per specs
@@ -229,7 +236,7 @@ class fileGameSystem:
                         break
         
         if target_ip:
-            user_id = getattr(self.netSystem.msg_system, 'user_id', 'unknown@127.0.0.1')
+            user_id = self.get_user_id()
             
             # Create a simple notification message (not part of official LSNP spec)
             notification_message = {
@@ -296,7 +303,8 @@ class fileGameSystem:
         
         timestamp = int(time.time())
         ttl = 3600
-        token = f"{self.user_id}|{timestamp + ttl}|{SCOPE_FILE}"
+        user_id = self.get_user_id()
+        token = f"{user_id}|{timestamp + ttl}|{SCOPE_FILE}"
         
         with open(file_path, "rb") as f:
             for chunk_index in range(total_chunks):
@@ -310,7 +318,7 @@ class fileGameSystem:
                 # Create FILE_CHUNK message according to LSNP specs
                 chunk_message = {
                     "TYPE": MSG_FILE_CHUNK,
-                    "FROM": self.user_id,
+                    "FROM": user_id,
                     "TO": to_user,
                     "FILEID": file_id,
                     "CHUNK_INDEX": str(chunk_index),  # String as per specs
@@ -435,11 +443,12 @@ class fileGameSystem:
     def send_file_received(self, file_id, to_user, status):
         """Send FILE_RECEIVED confirmation according to LSNP specs."""
         timestamp = int(time.time())
+        user_id = self.get_user_id()
         
         # Create FILE_RECEIVED message according to LSNP specs
         received_message = {
             "TYPE": MSG_FILE_RECEIVED,
-            "FROM": self.user_id,
+            "FROM": user_id,
             "TO": to_user,
             "FILEID": file_id,
             "STATUS": status,
