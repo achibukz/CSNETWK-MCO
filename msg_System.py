@@ -59,6 +59,14 @@ class msgSystem:
         self.display_name = display_name
         self.status = status
         
+        # Use default avatar if none provided
+        if avatar_path is None:
+            import os
+            default_avatar = os.path.join("uploads", "default.jpg")
+            if os.path.exists(default_avatar):
+                avatar_path = default_avatar
+                print(f"[INFO] Using default avatar: {default_avatar}")
+        
         # Store our own profile in known_peers
         self.known_peers[user_id] = {
             'display_name': display_name,
@@ -76,12 +84,13 @@ class msgSystem:
             "BROADCAST": True
         }
         
-        # Add avatar data if provided
+        # Add avatar data (will use default if avatar_path was set above)
         if avatar_path:
             try:
                 avatar_data = self.encode_avatar(avatar_path)
                 if avatar_data:
                     message.update(avatar_data)
+                    print(f"[INFO] Added avatar to profile: {avatar_path}")
             except Exception as e:
                 print(f"[WARN] Could not encode avatar: {e}")
         

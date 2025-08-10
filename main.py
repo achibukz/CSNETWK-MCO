@@ -417,6 +417,25 @@ class LSNPClient:
         print(f"  Display Name: {self.display_name}")
         print(f"  Status: {getattr(self.msgSystem, 'status', 'Online and ready!')}")
         
+        # Show current avatar
+        current_user_info = self.msgSystem.known_peers.get(self.user_id, {})
+        current_avatar = current_user_info.get('avatar_path', 'None')
+        print(f"  Current Avatar: {current_avatar}")
+        
+        # Show available avatars in uploads folder
+        try:
+            import os
+            uploads_dir = "uploads"
+            if os.path.exists(uploads_dir):
+                image_files = [f for f in os.listdir(uploads_dir) 
+                             if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp'))]
+                if image_files:
+                    print(f"\n  Available avatars in uploads/:")
+                    for i, img in enumerate(image_files, 1):
+                        print(f"    {i}. {img}")
+        except Exception as e:
+            pass
+        
         print("\nWhat would you like to edit?")
         print("1. Display Name")
         print("2. Status")
@@ -441,9 +460,64 @@ class LSNPClient:
                 new_status = getattr(self.msgSystem, 'status', 'Online and ready!')
                 
         elif choice == "3":
-            avatar_path = input("Enter path to avatar image (leave empty to remove avatar): ").strip()
-            if avatar_path and not avatar_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')):
-                print("Warning: File doesn't have a common image extension")
+            print("\nAvatar options:")
+            print("1. Choose from uploads/ folder")
+            print("2. Enter custom path")
+            print("3. Use default avatar (default.jpg)")
+            print("4. Remove avatar")
+            
+            avatar_choice = input("Enter choice: ").strip()
+            
+            if avatar_choice == "1":
+                # Show available images and let user pick
+                try:
+                    import os
+                    uploads_dir = "uploads"
+                    if os.path.exists(uploads_dir):
+                        image_files = [f for f in os.listdir(uploads_dir) 
+                                     if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp'))]
+                        if image_files:
+                            print("\nAvailable avatars:")
+                            for i, img in enumerate(image_files, 1):
+                                print(f"  {i}. {img}")
+                            
+                            img_choice = input("Enter number: ").strip()
+                            try:
+                                img_index = int(img_choice) - 1
+                                if 0 <= img_index < len(image_files):
+                                    avatar_path = os.path.join(uploads_dir, image_files[img_index])
+                                else:
+                                    print("Invalid selection.")
+                                    avatar_path = None
+                            except ValueError:
+                                print("Invalid number.")
+                                avatar_path = None
+                        else:
+                            print("No image files found in uploads/ folder.")
+                            avatar_path = None
+                    else:
+                        print("uploads/ folder not found.")
+                        avatar_path = None
+                except Exception as e:
+                    print(f"Error accessing uploads folder: {e}")
+                    avatar_path = None
+                    
+            elif avatar_choice == "2":
+                avatar_path = input("Enter path to avatar image: ").strip()
+                if avatar_path and not avatar_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')):
+                    print("Warning: File doesn't have a common image extension")
+                    
+            elif avatar_choice == "3":
+                avatar_path = os.path.join("uploads", "default.jpg")
+                print(f"Using default avatar: {avatar_path}")
+                
+            elif avatar_choice == "4":
+                avatar_path = ""  # Empty string to remove avatar
+                print("Avatar will be removed.")
+                
+            else:
+                print("Invalid choice. Keeping current avatar.")
+                avatar_path = None
                 
         elif choice == "4":
             new_display_name = input(f"Enter new display name (current: {self.display_name}): ").strip()
@@ -454,9 +528,69 @@ class LSNPClient:
             if not new_status:
                 new_status = getattr(self.msgSystem, 'status', 'Online and ready!')
                 
-            avatar_path = input("Enter path to avatar image (leave empty for no change): ").strip()
-            if avatar_path and not avatar_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')):
-                print("Warning: File doesn't have a common image extension")
+            # Use the same avatar selection as option 3
+            print("\nAvatar options:")
+            print("1. Choose from uploads/ folder")
+            print("2. Enter custom path") 
+            print("3. Use default avatar (default.jpg)")
+            print("4. Keep current avatar")
+            print("5. Remove avatar")
+            
+            avatar_choice = input("Enter choice: ").strip()
+            
+            if avatar_choice == "1":
+                # Same logic as option 3 above
+                try:
+                    import os
+                    uploads_dir = "uploads"
+                    if os.path.exists(uploads_dir):
+                        image_files = [f for f in os.listdir(uploads_dir) 
+                                     if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp'))]
+                        if image_files:
+                            print("\nAvailable avatars:")
+                            for i, img in enumerate(image_files, 1):
+                                print(f"  {i}. {img}")
+                            
+                            img_choice = input("Enter number: ").strip()
+                            try:
+                                img_index = int(img_choice) - 1
+                                if 0 <= img_index < len(image_files):
+                                    avatar_path = os.path.join(uploads_dir, image_files[img_index])
+                                else:
+                                    print("Invalid selection.")
+                                    avatar_path = None
+                            except ValueError:
+                                print("Invalid number.")
+                                avatar_path = None
+                        else:
+                            print("No image files found in uploads/ folder.")
+                            avatar_path = None
+                    else:
+                        print("uploads/ folder not found.")
+                        avatar_path = None
+                except Exception as e:
+                    print(f"Error accessing uploads folder: {e}")
+                    avatar_path = None
+                    
+            elif avatar_choice == "2":
+                avatar_path = input("Enter path to avatar image: ").strip()
+                if avatar_path and not avatar_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')):
+                    print("Warning: File doesn't have a common image extension")
+                    
+            elif avatar_choice == "3":
+                avatar_path = os.path.join("uploads", "default.jpg")
+                print(f"Using default avatar: {avatar_path}")
+                
+            elif avatar_choice == "4":
+                avatar_path = None  # Keep current
+                
+            elif avatar_choice == "5":
+                avatar_path = ""  # Empty string to remove avatar
+                print("Avatar will be removed.")
+                
+            else:
+                print("Invalid choice. Keeping current avatar.")
+                avatar_path = None
                 
         elif choice == "5":
             print("Profile edit cancelled.")
@@ -470,6 +604,15 @@ class LSNPClient:
             # Update local attributes
             self.display_name = new_display_name
             
+            # Handle avatar path - if None, keep current avatar
+            if avatar_path is None:
+                # Keep current avatar
+                current_user_info = self.msgSystem.known_peers.get(self.user_id, {})
+                avatar_path = current_user_info.get('avatar_path')
+            elif avatar_path == "":
+                # Remove avatar (set to None)
+                avatar_path = None
+            
             # Create and broadcast updated profile
             self.msgSystem.create_profile(self.user_id, new_display_name, new_status, avatar_path)
             
@@ -478,6 +621,8 @@ class LSNPClient:
             print(f"  Status: {new_status}")
             if avatar_path:
                 print(f"  Avatar: {avatar_path}")
+            else:
+                print(f"  Avatar: None (using default)")
                 
         except Exception as e:
             print(f"❌ Failed to update profile: {e}")
