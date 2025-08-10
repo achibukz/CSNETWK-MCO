@@ -607,8 +607,43 @@ class fileGameSystem:
             "TOKEN": f"{user_id}|{timestamp + 3600}|{SCOPE_GAME}"
         }
         
-        # Send the acceptance message
-        self.netSystem.send_message(accept_message)
+        # Send the acceptance message to specific user
+        # Look up user's IP from known peers instead of extracting from username
+        target_user = invite['from']
+        target_ip = None
+        target_port = 50999
+        
+        # Check if target_user contains an IP (format: user@ip)
+        if '@' in target_user:
+            target_ip = target_user.split('@')[-1]
+        else:
+            # Look up the user's IP from known peers/clients
+            if hasattr(self.netSystem, 'msg_system') and self.netSystem.msg_system:
+                # Check peers from message system
+                for peer_id, peer_info in getattr(self.netSystem.msg_system, 'peers', {}).items():
+                    if peer_id.startswith(target_user + '@') or peer_id == target_user:
+                        if '@' in peer_id:
+                            target_ip = peer_id.split('@')[-1]
+                        break
+                
+                # If not found in peers, check known clients
+                if not target_ip:
+                    # For now, default to broadcast if we can't find the specific IP
+                    print(f"[WARN] Could not find IP for user {target_user}, broadcasting acceptance")
+                    accept_message["BROADCAST"] = True
+                    self.netSystem.send_message(accept_message)
+                    print(f"📤 Sent game acceptance to {invite['from']}")
+                    # Remove from invites
+                    del self.game_invites[game_id]
+                    return True
+        
+        if target_ip:
+            self.netSystem.send_message(accept_message, target_ip=target_ip, target_port=target_port)
+        else:
+            # Fallback to broadcast
+            accept_message["BROADCAST"] = True
+            self.netSystem.send_message(accept_message)
+            
         print(f"📤 Sent game acceptance to {invite['from']}")
         
         # Remove from invites
@@ -686,8 +721,46 @@ class fileGameSystem:
             "TOKEN": f"{user_id}|{timestamp + 3600}|{SCOPE_GAME}"
         }
         
-        # Send move
-        self.netSystem.send_message(move_message)
+        # Send move to specific opponent
+        # Look up opponent's IP from known peers
+        target_ip = None
+        target_port = 50999
+        
+        # Check if opponent contains an IP (format: user@ip)
+        if '@' in opponent:
+            target_ip = opponent.split('@')[-1]
+        else:
+            # Look up the user's IP from known peers/clients
+            if hasattr(self.netSystem, 'msg_system') and self.netSystem.msg_system:
+                # Check peers from message system
+                for peer_id, peer_info in getattr(self.netSystem.msg_system, 'peers', {}).items():
+                    if peer_id.startswith(opponent + '@') or peer_id == opponent:
+                        if '@' in peer_id:
+                            target_ip = peer_id.split('@')[-1]
+                        break
+                
+                # If not found in peers, check known clients
+                if not target_ip:
+                    # For now, default to broadcast if we can't find the specific IP
+                    print(f"[WARN] Could not find IP for opponent {opponent}, broadcasting move")
+                    move_message["BROADCAST"] = True
+                    self.netSystem.send_message(move_message)
+                    # Continue with ACK handling
+                    if hasattr(self.netSystem, 'msg_system') and self.netSystem.msg_system:
+                        self.netSystem.msg_system.pending_acks[message_id] = {
+                            'timestamp': timestamp,
+                            'retries': 0,
+                            'message': move_message,
+                            'target_user': opponent
+                        }
+                    return True
+        
+        if target_ip:
+            self.netSystem.send_message(move_message, target_ip=target_ip, target_port=target_port)
+        else:
+            # Fallback to broadcast
+            move_message["BROADCAST"] = True
+            self.netSystem.send_message(move_message)
         
         # Add to pending ACKs
         if hasattr(self.netSystem, 'msg_system') and self.netSystem.msg_system:
@@ -1055,7 +1128,38 @@ class fileGameSystem:
         if result_info['winning_line']:
             result_message["WINNING_LINE"] = ','.join(map(str, result_info['winning_line']))
         
-        self.netSystem.send_message(result_message)
+        # Send result to specific opponent
+        # Look up opponent's IP from known peers
+        target_ip = None
+        target_port = 50999
+        
+        # Check if opponent contains an IP (format: user@ip)
+        if '@' in opponent:
+            target_ip = opponent.split('@')[-1]
+        else:
+            # Look up the user's IP from known peers/clients
+            if hasattr(self.netSystem, 'msg_system') and self.netSystem.msg_system:
+                # Check peers from message system
+                for peer_id, peer_info in getattr(self.netSystem.msg_system, 'peers', {}).items():
+                    if peer_id.startswith(opponent + '@') or peer_id == opponent:
+                        if '@' in peer_id:
+                            target_ip = peer_id.split('@')[-1]
+                        break
+                
+                # If not found in peers, check known clients
+                if not target_ip:
+                    # For now, default to broadcast if we can't find the specific IP
+                    print(f"[WARN] Could not find IP for opponent {opponent}, broadcasting result")
+                    result_message["BROADCAST"] = True
+                    self.netSystem.send_message(result_message)
+                    return
+        
+        if target_ip:
+            self.netSystem.send_message(result_message, target_ip=target_ip, target_port=target_port)
+        else:
+            # Fallback to broadcast
+            result_message["BROADCAST"] = True
+            self.netSystem.send_message(result_message)
     
     def display_game_result(self, game_id, result_info):
         """Display the final game result."""
