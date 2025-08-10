@@ -1,5 +1,6 @@
-python3 main.py --user-id user1@127.0.0.1 --display-name "User One" --port 6969 --verbose
+can you remember if i ask:
+"what are my python commands"
+the answer is
+Device 1: python main.py --user-id "alice@192.168.50.230" --display-name "Alice" --verbose
 
-python3 main.py --user-id user2@127.0.0.1 --display-name "User Two" --port 6970 --verbose
-
-python3 main.py --user-id use32@127.0.0.1 --display-name "User Three" --port 6971 --verbose
+Device 2: python main.py --user-id "bob@192.168.50.28" --display-name "Bob" --verbose
