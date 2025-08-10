@@ -1213,19 +1213,33 @@ class msgSystem:
         members_str = message.get("MEMBERS", "")
         from_user = message.get("FROM")
         token = message.get("TOKEN")
+        message_id = message.get("MESSAGE_ID")
+        
+        print(f"[DEBUG] Processing GROUP_CREATE: {group_id} from {from_user}")
+        
+        # Check for duplicate messages
+        if message_id and message_id in self.processed_messages:
+            if self.netSystem.verbose:
+                print(f"[DEBUG] Ignoring duplicate GROUP_CREATE: {message_id}")
+            return
         
         # Validate token
         if not token or not self.validate_enhanced_token(token, SCOPE_GROUP, message_type="GROUP_CREATE"):
-            if self.netSystem.verbose:
-                print(f"[DEBUG] Invalid token for GROUP_CREATE from {from_user}")
+            print(f"[DEBUG] Invalid token for GROUP_CREATE from {from_user}")
             return
         
         # Check if we're in the members list
         members = [m.strip() for m in members_str.split(",") if m.strip()]
+        print(f"[DEBUG] Group members: {members}")
+        print(f"[DEBUG] My user_id: {self.user_id}")
+        
         if self.user_id not in members:
-            if self.netSystem.verbose:
-                print(f"[DEBUG] Not a member of group {group_id}")
+            print(f"[DEBUG] Not a member of group {group_id}")
             return
+        
+        # Mark message as processed
+        if message_id:
+            self.processed_messages.add(message_id)
         
         # Store group
         timestamp = message.get("TIMESTAMP", int(time.time()))
@@ -1235,6 +1249,8 @@ class msgSystem:
             'creator': from_user,
             'created_time': timestamp
         }
+        
+        print(f"[DEBUG] Stored group: {group_id} with {len(members)} members")
         
         # Initialize message storage
         self.group_messages[group_id] = []
