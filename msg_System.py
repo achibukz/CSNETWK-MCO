@@ -992,6 +992,9 @@ class msgSystem:
             print(f"❌ Only the group creator can update group '{group_id}'.")
             return False
         
+        # Store original member list before changes for notification
+        original_members = group['members'].copy()
+        
         # Process additions
         if add_members:
             for member in add_members:
@@ -1021,8 +1024,12 @@ class msgSystem:
         if remove_members:
             message["REMOVE"] = ",".join(remove_members)
         
-        # Send to all current members
-        for member in group['members']:
+        # Send to all original members (including those being removed)
+        all_affected_members = set(original_members)
+        if add_members:
+            all_affected_members.update(add_members)
+        
+        for member in all_affected_members:
             if member != self.user_id:  # Don't send to self
                 self.send_message_to_user(message, member)
         
@@ -1125,16 +1132,22 @@ class msgSystem:
                 print(f"[DEBUG] Invalid token for GROUP_UPDATE from {from_user}")
             return
         
-        # Check if group exists and we're a member
+        # Check if group exists
         if group_id not in self.groups:
             if self.netSystem.verbose:
                 print(f"[DEBUG] Unknown group {group_id}")
             return
-        
+
         group = self.groups[group_id]
-        if self.user_id not in group['members']:
+        
+        # Check if we're affected by this update (either current member or being added/removed)
+        is_current_member = self.user_id in group['members']
+        is_being_added = add_members_str and self.user_id in [m.strip() for m in add_members_str.split(",")]
+        is_being_removed = remove_members_str and self.user_id in [m.strip() for m in remove_members_str.split(",")]
+        
+        if not (is_current_member or is_being_added or is_being_removed):
             if self.netSystem.verbose:
-                print(f"[DEBUG] Not a member of group {group_id}")
+                print(f"[DEBUG] Not affected by group {group_id} update")
             return
         
         # Process updates
@@ -1149,12 +1162,21 @@ class msgSystem:
             for member in remove_members:
                 if member in group['members'] and member != group['creator']:
                     group['members'].remove(member)
+                    # If we were removed, clean up our local group data
+                    if member == self.user_id:
+                        print(f"❌ You have been removed from group \"{group['name']}\"")
+                        # Remove group from our local storage
+                        del self.groups[group_id]
+                        if group_id in self.group_messages:
+                            del self.group_messages[group_id]
+                        return  # Don't process further since we're no longer in the group
         
         # Store valid message
         self.store_valid_message(message, {'token_valid': True, 'scope': SCOPE_GROUP})
         
-        # Non-verbose printing (as per spec)
-        print(f"📢 The group \"{group['name']}\" member list was updated.")
+        # Non-verbose printing (as per spec) - only if we're still in the group
+        if self.user_id in group['members']:
+            print(f"📢 The group \"{group['name']}\" member list was updated.")
     
     def handle_group_message(self, message):
         """Handle incoming GROUP_MESSAGE messages."""
@@ -1229,6 +1251,10 @@ class msgSystem:
         try:
             # Extract IP from user_id
             target_ip = target_user.split('@')[-1] if '@' in target_user else "127.0.0.1"
+            
+            if self.netSystem.verbose:
+                print(f"[DEBUG] Sending {message.get('TYPE')} message to {target_user} at {target_ip}")
+            
             self.netSystem.send_message(message, target_ip=target_ip, target_port=LSNP_PORT)
         except Exception as e:
             if self.netSystem.verbose:
