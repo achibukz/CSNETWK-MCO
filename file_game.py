@@ -108,12 +108,23 @@ class fileGameSystem:
             "total_chunks": 0
         }
         
-        # Send the offer
-        self.netSystem.send_message(file_offer_message)
+        # Send the offer - resolve target IP from user_id
+        target_ip = to_user.split("@")[1] if "@" in to_user else "127.0.0.1"
+        target_port = LSNP_PORT
+        
+        # Try to get more specific peer info if available
+        if hasattr(self.netSystem, 'msg_system') and self.netSystem.msg_system:
+            peer_info = self.netSystem.msg_system.known_peers.get(to_user)
+            if peer_info:
+                target_ip = peer_info.get('ip', target_ip)
+                target_port = peer_info.get('port', target_port)
+        
+        self.netSystem.send_message(file_offer_message, target_ip=target_ip, target_port=target_port)
         
         if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
             print(f"[FILE] Sent file offer for {filename} to {to_user} (ID: {file_id})")
             print(f"[FILE] File source: {file_path}")
+            print(f"[FILE] Target: {target_ip}:{target_port}")
         
         # Start sending chunks after a short delay to allow receiver to be ready
         # This is a simplified approach - in a real implementation, you might want
@@ -264,8 +275,18 @@ class fileGameSystem:
                     "DATA": encoded_data
                 }
                 
-                # Send the chunk
-                self.netSystem.send_message(chunk_message)
+                # Send the chunk - resolve target IP from user_id
+                target_ip = to_user.split("@")[1] if "@" in to_user else "127.0.0.1"
+                target_port = LSNP_PORT
+                
+                # Try to get more specific peer info if available
+                if hasattr(self.netSystem, 'msg_system') and self.netSystem.msg_system:
+                    peer_info = self.netSystem.msg_system.known_peers.get(to_user)
+                    if peer_info:
+                        target_ip = peer_info.get('ip', target_ip)
+                        target_port = peer_info.get('port', target_port)
+                
+                self.netSystem.send_message(chunk_message, target_ip=target_ip, target_port=target_port)
                 file_info["chunks_sent"] += 1
                 
                 # Small delay to prevent overwhelming the network
@@ -380,12 +401,23 @@ class fileGameSystem:
             "TIMESTAMP": str(timestamp)  # String as per specs
         }
         
-        # Send the confirmation
-        self.netSystem.send_message(received_message)
+        # Send the confirmation - resolve target IP from user_id
+        target_ip = to_user.split("@")[1] if "@" in to_user else "127.0.0.1"
+        target_port = LSNP_PORT
+        
+        # Try to get more specific peer info if available
+        if hasattr(self.netSystem, 'msg_system') and self.netSystem.msg_system:
+            peer_info = self.netSystem.msg_system.known_peers.get(to_user)
+            if peer_info:
+                target_ip = peer_info.get('ip', target_ip)
+                target_port = peer_info.get('port', target_port)
+        
+        self.netSystem.send_message(received_message, target_ip=target_ip, target_port=target_port)
         
         # No printing for FILE_RECEIVED as per specs
         if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
             print(f"[FILE] Sent FILE_RECEIVED confirmation for {file_id} to {to_user}")
+            print(f"[FILE] Target: {target_ip}:{target_port}")
     
     def handle_file_received(self, message):
         """Handle incoming FILE_RECEIVED confirmation."""

@@ -71,7 +71,7 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
         thread = threading.Thread(target=self.setup_socket, daemon=True)
         thread.start()
 
-    def send_message(self, message, target_ip=LSNP_PORT, target_port=LSNP_PORT):  # None for broadcast
+    def send_message(self, message, target_ip=None, target_port=LSNP_PORT):  # None for broadcast
         """Send an LSNP message via UDP to a target IP and port or everybody (if broadcast)."""
         try:
             # Convert to LSNP format (key-value pairs with \n\n terminator)
@@ -141,7 +141,9 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
         lines = []
         for key, value in message_dict.items():
             if key != "BROADCAST":  # Don't include internal flags in LSNP message
-                lines.append(f"{key}: {value}")
+                # Ensure value is a string (convert if necessary)
+                str_value = str(value) if value is not None else ""
+                lines.append(f"{key}: {str_value}")
         return "\n".join(lines) + "\n\n"
 
     def _lsnp_to_dict(self, lsnp_message):
