@@ -283,6 +283,7 @@ class msgSystem:
     def process_incoming_message(self, message):
         """Process incoming messages and store valid ones."""
         msg_type = message.get("TYPE")
+        print(f"[DEBUG] Processing message type: '{msg_type}'")
         
         if msg_type == MSG_PROFILE:
             self.handle_profile_message(message)
@@ -303,11 +304,14 @@ class msgSystem:
         elif msg_type == MSG_REVOKE:
             self.handle_revoke_message(message)
         elif msg_type == MSG_GROUP_CREATE:
+            print(f"[DEBUG] Calling handle_group_create_message for: {msg_type}")
             self.handle_group_create_message(message)
         elif msg_type == MSG_GROUP_UPDATE:
             self.handle_group_update_message(message)
         elif msg_type == MSG_GROUP_MESSAGE:
             self.handle_group_message(message)
+        else:
+            print(f"[DEBUG] Unknown message type: '{msg_type}'")
         
         # Send ACK for messages that require acknowledgment
         if msg_type in [MSG_DM, MSG_FOLLOW, MSG_UNFOLLOW, MSG_LIKE, MSG_GROUP_CREATE, MSG_GROUP_UPDATE, MSG_GROUP_MESSAGE] and message.get("MESSAGE_ID"):
