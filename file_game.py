@@ -389,7 +389,7 @@ class fileGameSystem:
         
         # Send ACK
         if message.get('MESSAGE_ID'):
-            self.send_ack(message['MESSAGE_ID'], "RECEIVED")
+            self.send_ack(message)
 
     def handle_game_move(self, message):
         """Handle incoming game move."""
@@ -427,7 +427,7 @@ class fileGameSystem:
         if self.handle_duplicate_move(game_id, turn):
             print(f"⚠️ Duplicate move detected for turn {turn}, ignoring")
             if message.get('MESSAGE_ID'):
-                self.send_ack(message['MESSAGE_ID'], "RECEIVED")
+                self.send_ack(message)
             return
         
         # Apply the move
@@ -458,7 +458,7 @@ class fileGameSystem:
         
         # Send ACK
         if message.get('MESSAGE_ID'):
-            self.send_ack(message['MESSAGE_ID'], "RECEIVED")
+            self.send_ack(message)
 
     def handle_game_result(self, message):
         """Handle incoming game result."""
@@ -496,7 +496,7 @@ class fileGameSystem:
         
         # Send ACK
         if message.get('MESSAGE_ID'):
-            self.send_ack(message['MESSAGE_ID'], "RECEIVED")
+            self.send_ack(message)
 
     def detect_game_winner(self, board):
         """Detect if there's a winner and return (symbol, winning_line)."""
@@ -569,10 +569,10 @@ class fileGameSystem:
         
         print(f"Game {game_id} completed.\n")
     
-    def send_ack(self, message_id, status="RECEIVED"):
+    def send_ack(self, original_message):
         """Send ACK message."""
         if hasattr(self.netSystem, 'msg_system') and self.netSystem.msg_system:
-            self.netSystem.msg_system.send_ack(message_id, status)
+            self.netSystem.msg_system.send_ack(original_message)
     
     def handle_duplicate_move(self, game_id, turn):
         """Check for duplicate moves (idempotency)."""
