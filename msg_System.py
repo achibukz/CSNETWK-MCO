@@ -20,6 +20,9 @@ class msgSystem:
         self.acks_sent = 0  # Counter for ACKs sent
         self.acks_received = 0  # Counter for ACKs received
         
+        # Like tracking system
+        self.post_likes = {}  # Track likes per post {(user_id, timestamp): {likers: set(), count: int}}
+        
         # Group Management
         self.groups = {}  # Store groups {group_id: {name, members, creator, created_time}}
         self.group_messages = {}  # Store group messages {group_id: [messages]}
@@ -490,6 +493,8 @@ class msgSystem:
         from_user = message.get("FROM")
         action = message.get("ACTION", "LIKE")
         message_id = message.get("MESSAGE_ID")
+        post_timestamp = message.get("POST_TIMESTAMP")
+        to_user = message.get("TO")
         
         # Check for duplicate messages
         if message_id and message_id in self.processed_messages:
@@ -500,6 +505,27 @@ class msgSystem:
         # Mark message as processed
         if message_id:
             self.processed_messages.add(message_id)
+        
+        # Track likes for the post (using post owner and timestamp as key)
+        if post_timestamp and to_user:
+            post_key = (to_user, post_timestamp)
+            
+            # Initialize post like tracking if not exists
+            if post_key not in self.post_likes:
+                self.post_likes[post_key] = {'likers': set(), 'count': 0}
+            
+            # Handle LIKE/UNLIKE actions
+            if action == "LIKE":
+                if from_user not in self.post_likes[post_key]['likers']:
+                    self.post_likes[post_key]['likers'].add(from_user)
+                    self.post_likes[post_key]['count'] += 1
+            elif action == "UNLIKE":
+                if from_user in self.post_likes[post_key]['likers']:
+                    self.post_likes[post_key]['likers'].remove(from_user)
+                    self.post_likes[post_key]['count'] -= 1
+                    # Ensure count doesn't go negative
+                    if self.post_likes[post_key]['count'] < 0:
+                        self.post_likes[post_key]['count'] = 0
         
         display_name = self.get_display_name(from_user)
         print(f"{self.get_timestamp_str()} [LIKE] {display_name} {action.lower()}d your post")
@@ -927,6 +953,20 @@ class msgSystem:
                 
         self.stored_posts = unique_posts
         return len(self.stored_posts)
+
+    def get_like_count(self, user_id, timestamp):
+        """Get the number of likes for a specific post."""
+        post_key = (user_id, timestamp)
+        if post_key in self.post_likes:
+            return self.post_likes[post_key]['count']
+        return 0
+    
+    def get_post_likers(self, user_id, timestamp):
+        """Get the list of users who liked a specific post."""
+        post_key = (user_id, timestamp)
+        if post_key in self.post_likes:
+            return list(self.post_likes[post_key]['likers'])
+        return []
 
     def get_all_dms(self):  # Show all DMs
         """Get all stored DMs."""

@@ -189,19 +189,39 @@ class LSNPClient:
             print("  No known peers yet")
 
     def show_all_posts(self):
-        """Show all valid posts."""
+        """Show all valid posts with like counts."""
         print("\n=== All Valid Posts ===")
         # Clean up any duplicates first
         post_count = self.msgSystem.clear_duplicate_posts()
         posts = self.msgSystem.get_all_posts()
         
         if posts:
-            for post in posts:
+            for i, post in enumerate(posts, 1):
                 user_id = post.get('USER_ID', 'Unknown')
                 content = post.get('CONTENT', 'No content')
                 timestamp = post.get('TIMESTAMP', 'No timestamp')
                 display_name = self.msgSystem.get_display_name(user_id)
-                print(f"  [{display_name}] {content} (at {timestamp})")
+                
+                # Get like count and likers for this post
+                like_count = self.msgSystem.get_like_count(user_id, timestamp)
+                likers = self.msgSystem.get_post_likers(user_id, timestamp)
+                
+                # Format like count display
+                if like_count == 0:
+                    like_text = "No likes"
+                elif like_count == 1:
+                    liker_name = self.msgSystem.get_display_name(likers[0]) if likers else "Unknown"
+                    like_text = f"1 like (by {liker_name})"
+                else:
+                    # Show first few likers
+                    liker_names = [self.msgSystem.get_display_name(liker) for liker in likers[:3]]
+                    if len(likers) > 3:
+                        like_text = f"{like_count} likes (by {', '.join(liker_names)} and {len(likers)-3} others)"
+                    else:
+                        like_text = f"{like_count} likes (by {', '.join(liker_names)})"
+                
+                print(f"  {i}. [{display_name}] {content}")
+                print(f"     Posted at: {timestamp} | {like_text}")
         else:
             print("  No posts available")
 
@@ -643,7 +663,12 @@ class LSNPClient:
             content = post.get('CONTENT', 'No content')
             timestamp = post.get('TIMESTAMP', 'No timestamp')
             display_name = self.msgSystem.get_display_name(user_id)
-            print(f"  {i}. [{display_name}] {content[:50]}{'...' if len(content) > 50 else ''}")
+            
+            # Show current like count
+            like_count = self.msgSystem.get_like_count(user_id, timestamp)
+            like_text = f"({like_count} likes)" if like_count > 0 else "(no likes)"
+            
+            print(f"  {i}. [{display_name}] {content[:50]}{'...' if len(content) > 50 else ''} {like_text}")
         
         try:
             choice = input("\nEnter post number to like/unlike: ").strip()
@@ -668,7 +693,19 @@ class LSNPClient:
             if action not in ['LIKE', 'UNLIKE']:
                 action = 'LIKE'
             
+            # Show current like count before action
+            current_likes = self.msgSystem.get_like_count(post_user, post_timestamp)
+            display_name = self.msgSystem.get_display_name(post_user)
+            
             self.msgSystem.send_like(post_user, post_timestamp, action)
+            
+            # Give feedback about the action
+            if action == 'LIKE':
+                print(f"✅ Sent LIKE to {display_name}'s post")
+            else:
+                print(f"✅ Sent UNLIKE to {display_name}'s post")
+            
+            print(f"   Current likes: {current_likes} (note: your like may not be reflected yet due to network delay)")
             
         except ValueError:
             print("Invalid input.")
