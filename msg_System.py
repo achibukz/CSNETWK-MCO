@@ -1401,13 +1401,23 @@ class msgSystem:
     def send_message_to_user(self, message, target_user):
         """Send a message to a specific user via unicast."""
         try:
-            # Extract IP from user_id
-            target_ip = target_user.split('@')[-1] if '@' in target_user else "127.0.0.1"
+            # Extract IP and port from user_id format: user@ip:port
+            if '@' in target_user:
+                user_part, addr_part = target_user.split('@', 1)
+                if ':' in addr_part:
+                    target_ip, port_str = addr_part.split(':', 1)
+                    target_port = int(port_str)
+                else:
+                    target_ip = addr_part
+                    target_port = LSNP_PORT  # fallback to broadcast port
+            else:
+                target_ip = "127.0.0.1"
+                target_port = LSNP_PORT
             
             if self.netSystem.verbose:
-                print(f"[DEBUG] Sending {message.get('TYPE')} message to {target_user} at {target_ip}")
+                print(f"[DEBUG] Sending {message.get('TYPE')} message to {target_user} at {target_ip}:{target_port}")
             
-            self.netSystem.send_message(message, target_ip=target_ip, target_port=LSNP_PORT)
+            self.netSystem.send_message(message, target_ip=target_ip, target_port=target_port)
         except Exception as e:
             if self.netSystem.verbose:
                 print(f"[ERROR] Failed to send message to {target_user}: {e}")

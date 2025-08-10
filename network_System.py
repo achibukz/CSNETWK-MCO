@@ -216,7 +216,7 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
             msg_type = message.get("TYPE")
 
             # Route messages to appropriate systems
-            if msg_type in [MSG_PROFILE, MSG_POST, MSG_DM, MSG_PING, MSG_LIKE, MSG_FOLLOW, MSG_UNFOLLOW, MSG_ACK, MSG_REVOKE]:
+            if msg_type in [MSG_PROFILE, MSG_POST, MSG_DM, MSG_PING, MSG_LIKE, MSG_FOLLOW, MSG_UNFOLLOW, MSG_ACK, MSG_REVOKE, MSG_GROUP_CREATE, MSG_GROUP_UPDATE, MSG_GROUP_MESSAGE]:
                 if self.msg_system:
                     self.msg_system.process_incoming_message(message)
                 else:
@@ -235,8 +235,6 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                         self.file_game_system.handle_game_result(message)
                 else:
                     self.log_message(f"[GAME]", message)
-            elif msg_type in [MSG_GROUP_CREATE, MSG_GROUP_UPDATE, MSG_GROUP_MESSAGE]:
-                self.log_message(f"[GROUP]", message)
             elif msg_type in [MSG_FILE_OFFER, MSG_FILE_CHUNK, MSG_FILE_RECEIVED]:
                 # File transfer messages - route to file_game_system
                 if msg_type == MSG_FILE_OFFER:
