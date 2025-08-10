@@ -25,6 +25,7 @@ class LSNPClient:
         
         # Set up cross-references for proper message routing
         self.networkSystem.set_msg_system(self.msgSystem)
+        self.networkSystem.set_file_game_system(self.fileGameSystem)
         
     def start(self):
         # Start network listener
@@ -60,7 +61,8 @@ class LSNPClient:
             print("15. Show token validation stats")
             print("16. Show valid messages log")
             print("17. Revoke a token")
-            print("18. Quit")
+            print("18. 🎮 Tic-Tac-Toe Game")
+            print("19. Quit")
 
             choice = input("Enter choice: ").strip()
 
@@ -132,6 +134,9 @@ class LSNPClient:
                 self.revoke_token_manually()
 
             elif choice == "18":
+                self.tic_tac_toe_menu()
+
+            elif choice == "19":
                 print("Exiting...")
                 break
 
@@ -583,6 +588,328 @@ class LSNPClient:
             return
             
         print(f"Reason: {reason}")
+
+    def tic_tac_toe_menu(self):
+        """Tic-Tac-Toe game management menu."""
+        while True:
+            print("\n🎮 === Tic-Tac-Toe Game Menu ===")
+            print("1. Invite someone to play")
+            print("2. Show game invitations")
+            print("3. Accept game invitation")
+            print("4. Show active games")
+            print("5. Make a move")
+            print("6. Display game board")
+            print("7. Forfeit game")
+            print("8. Back to main menu")
+            
+            choice = input("Enter choice: ").strip()
+            
+            if choice == "1":
+                self.invite_to_game()
+            elif choice == "2":
+                self.show_game_invites()
+            elif choice == "3":
+                self.accept_game_invitation()
+            elif choice == "4":
+                self.show_active_games()
+            elif choice == "5":
+                self.make_game_move()
+            elif choice == "6":
+                self.display_game_board()
+            elif choice == "7":
+                self.forfeit_game()
+            elif choice == "8":
+                break
+            else:
+                print("Invalid choice. Try again.")
+            
+            time.sleep(0.5)
+
+    def invite_to_game(self):
+        """Invite a user to play Tic-Tac-Toe."""
+        print("\n🎮 === Invite to Tic-Tac-Toe ===")
+        peers = self.msgSystem.get_known_peers()
+        if not peers:
+            print("No known peers to invite.")
+            return
+        
+        print("Available peers:")
+        for i, (user_id, info) in enumerate(peers.items(), 1):
+            display_name = info.get('display_name', user_id)
+            print(f"  {i}. {display_name} ({user_id})")
+        
+        try:
+            choice = input("\nEnter number to invite (or user_id): ").strip()
+            if choice.isdigit():
+                choice_num = int(choice) - 1
+                user_ids = list(peers.keys())
+                if 0 <= choice_num < len(user_ids):
+                    target_user = user_ids[choice_num]
+                else:
+                    print("Invalid selection.")
+                    return
+            else:
+                target_user = choice
+            
+            if target_user == self.user_id:
+                print("You cannot play against yourself.")
+                return
+            
+            # Choose symbol
+            symbol = input("Choose your symbol (X/O) [default: X]: ").strip().upper()
+            if symbol not in ['X', 'O']:
+                symbol = 'X'
+            
+            game_id = self.fileGameSystem.invite_to_game(target_user, symbol)
+            print(f"✅ Game invitation sent! Game ID: {game_id}")
+            
+        except ValueError:
+            print("Invalid input.")
+        except Exception as e:
+            print(f"Error: {e}")
+
+    def show_game_invites(self):
+        """Show pending game invitations."""
+        print("\n🎮 === Game Invitations ===")
+        invites = self.fileGameSystem.get_game_invites()
+        
+        if not invites:
+            print("No pending game invitations.")
+            return
+        
+        for game_id, invite in invites:
+            from_user = invite['from']
+            symbol = invite['symbol']
+            our_symbol = "O" if symbol == "X" else "X"
+            display_name = self.msgSystem.get_display_name(from_user)
+            
+            print(f"Game {game_id}:")
+            print(f"  From: {display_name} ({from_user})")
+            print(f"  Their symbol: {symbol}")
+            print(f"  Your symbol: {our_symbol}")
+            print()
+
+    def accept_game_invitation(self):
+        """Accept a game invitation."""
+        print("\n🎮 === Accept Game Invitation ===")
+        invites = self.fileGameSystem.get_game_invites()
+        
+        if not invites:
+            print("No pending game invitations.")
+            return
+        
+        print("Pending invitations:")
+        for i, (game_id, invite) in enumerate(invites, 1):
+            from_user = invite['from']
+            display_name = self.msgSystem.get_display_name(from_user)
+            symbol = invite['symbol']
+            our_symbol = "O" if symbol == "X" else "X"
+            print(f"  {i}. Game {game_id} from {display_name} (You: {our_symbol})")
+        
+        try:
+            choice = input("\nEnter number to accept (or game_id): ").strip()
+            if choice.isdigit():
+                choice_num = int(choice) - 1
+                if 0 <= choice_num < len(invites):
+                    game_id, invite = invites[choice_num]
+                else:
+                    print("Invalid selection.")
+                    return
+            else:
+                game_id = choice
+                # Find invite
+                invite = None
+                for gid, inv in invites:
+                    if gid == game_id:
+                        invite = inv
+                        break
+                if not invite:
+                    print(f"Game {game_id} not found in invitations.")
+                    return
+            
+            if self.fileGameSystem.accept_game_invite(game_id, invite['from']):
+                print(f"✅ Game {game_id} accepted!")
+            else:
+                print(f"❌ Failed to accept game {game_id}")
+                
+        except ValueError:
+            print("Invalid input.")
+        except Exception as e:
+            print(f"Error: {e}")
+
+    def show_active_games(self):
+        """Show active games."""
+        print("\n🎮 === Active Games ===")
+        games = self.fileGameSystem.get_active_games()
+        
+        if not games:
+            print("No active games.")
+            return
+        
+        for game in games:
+            game_id = game['game_id']
+            players = game['players']
+            current_turn = game['current_turn']
+            turn_number = game['turn_number']
+            
+            print(f"Game {game_id}:")
+            print(f"  Players: {players}")
+            print(f"  Current turn: {current_turn}")
+            print(f"  Turn number: {turn_number}")
+            
+            user_id = self.user_id
+            if user_id in players:
+                our_symbol = players[user_id]
+                if current_turn == our_symbol:
+                    print(f"  👈 Your turn! ({our_symbol})")
+                else:
+                    print(f"  ⏳ Waiting for opponent ({current_turn})")
+            print()
+
+    def make_game_move(self):
+        """Make a move in an active game."""
+        print("\n🎮 === Make Game Move ===")
+        games = self.fileGameSystem.get_active_games()
+        
+        if not games:
+            print("No active games.")
+            return
+        
+        # Show games where it's our turn
+        our_turn_games = []
+        user_id = self.user_id
+        
+        for game in games:
+            game_id = game['game_id']
+            players = game['players']
+            current_turn = game['current_turn']
+            
+            if user_id in players and players[user_id] == current_turn:
+                our_turn_games.append(game)
+        
+        if not our_turn_games:
+            print("No games where it's your turn.")
+            print("\nAll active games:")
+            for game in games:
+                print(f"  Game {game['game_id']}: Waiting for {game['current_turn']}")
+            return
+        
+        print("Games where it's your turn:")
+        for i, game in enumerate(our_turn_games, 1):
+            print(f"  {i}. Game {game['game_id']}")
+        
+        try:
+            choice = input("\nEnter game number (or game_id): ").strip()
+            if choice.isdigit():
+                choice_num = int(choice) - 1
+                if 0 <= choice_num < len(our_turn_games):
+                    game = our_turn_games[choice_num]
+                    game_id = game['game_id']
+                else:
+                    print("Invalid selection.")
+                    return
+            else:
+                game_id = choice
+            
+            # Show current board
+            self.fileGameSystem.display_game_board(game_id)
+            
+            # Get move
+            print("Choose your move (position 0-8):")
+            print("0 | 1 | 2")
+            print("3 | 4 | 5")
+            print("6 | 7 | 8")
+            
+            position = input("Enter position: ").strip()
+            if not position.isdigit():
+                print("Invalid position. Must be a number 0-8.")
+                return
+            
+            position = int(position)
+            if position < 0 or position > 8:
+                print("Invalid position. Must be 0-8.")
+                return
+            
+            if self.fileGameSystem.make_move(game_id, position):
+                print(f"✅ Move made at position {position}!")
+            else:
+                print(f"❌ Failed to make move")
+                
+        except ValueError:
+            print("Invalid input.")
+        except Exception as e:
+            print(f"Error: {e}")
+
+    def display_game_board(self):
+        """Display a game board."""
+        print("\n🎮 === Display Game Board ===")
+        games = self.fileGameSystem.get_active_games()
+        
+        if not games:
+            print("No active games.")
+            return
+        
+        print("Active games:")
+        for i, game in enumerate(games, 1):
+            print(f"  {i}. Game {game['game_id']}")
+        
+        try:
+            choice = input("\nEnter game number (or game_id): ").strip()
+            if choice.isdigit():
+                choice_num = int(choice) - 1
+                if 0 <= choice_num < len(games):
+                    game_id = games[choice_num]['game_id']
+                else:
+                    print("Invalid selection.")
+                    return
+            else:
+                game_id = choice
+            
+            self.fileGameSystem.display_game_board(game_id)
+            
+        except ValueError:
+            print("Invalid input.")
+        except Exception as e:
+            print(f"Error: {e}")
+
+    def forfeit_game(self):
+        """Forfeit an active game."""
+        print("\n🎮 === Forfeit Game ===")
+        games = self.fileGameSystem.get_active_games()
+        
+        if not games:
+            print("No active games.")
+            return
+        
+        print("Active games:")
+        for i, game in enumerate(games, 1):
+            print(f"  {i}. Game {game['game_id']}")
+        
+        try:
+            choice = input("\nEnter game number to forfeit (or game_id): ").strip()
+            if choice.isdigit():
+                choice_num = int(choice) - 1
+                if 0 <= choice_num < len(games):
+                    game_id = games[choice_num]['game_id']
+                else:
+                    print("Invalid selection.")
+                    return
+            else:
+                game_id = choice
+            
+            confirm = input(f"Are you sure you want to forfeit game {game_id}? (y/N): ").strip().lower()
+            if confirm == 'y':
+                if self.fileGameSystem.forfeit_game(game_id):
+                    print(f"✅ Game {game_id} forfeited")
+                else:
+                    print(f"❌ Failed to forfeit game {game_id}")
+            else:
+                print("Forfeit cancelled.")
+                
+        except ValueError:
+            print("Invalid input.")
+        except Exception as e:
+            print(f"Error: {e}")
 
 if __name__ == "__main__":
     import argparse

@@ -222,7 +222,16 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                     # Fallback if msg_system not set
                     print(f"{self.get_timestamp_str()}[{msg_type}] {message}")
             elif msg_type in [MSG_TICTACTOE_INVITE, MSG_TICTACTOE_MOVE, MSG_TICTACTOE_RESULT]:
-                print(f"{self.get_timestamp_str()}[GAME] {message}")
+                # Route to file_game_system for game handling
+                if hasattr(self, 'file_game_system') and self.file_game_system:
+                    if msg_type == MSG_TICTACTOE_INVITE:
+                        self.file_game_system.handle_game_invite(message)
+                    elif msg_type == MSG_TICTACTOE_MOVE:
+                        self.file_game_system.handle_game_move(message)
+                    elif msg_type == MSG_TICTACTOE_RESULT:
+                        self.file_game_system.handle_game_result(message)
+                else:
+                    print(f"{self.get_timestamp_str()}[GAME] {message}")
             elif msg_type in [MSG_GROUP_CREATE, MSG_GROUP_UPDATE, MSG_GROUP_MESSAGE]:
                 print(f"{self.get_timestamp_str()}[GROUP] {message}")
             elif msg_type in [MSG_FILE_OFFER, MSG_FILE_CHUNK, MSG_FILE_RECEIVED]:
@@ -281,6 +290,10 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
     def set_msg_system(self, msg_system):
         """Set the message system for proper routing."""
         self.msg_system = msg_system
+
+    def set_file_game_system(self, file_game_system):
+        """Set the file/game system for proper routing."""
+        self.file_game_system = file_game_system
 
     def validate_token(self, token, scope, sender_ip):
         pass
