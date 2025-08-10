@@ -98,7 +98,7 @@ class fileGameSystem:
             "GAMEID": game_id,
             "MESSAGE_ID": message_id,
             "SYMBOL": symbol,
-            "TIMESTAMP": timestamp,
+            "TIMESTAMP": str(timestamp),  # Convert to string for LSNP
             "TOKEN": f"{user_id}|{timestamp + 3600}|{SCOPE_GAME}"
         }
         
@@ -119,7 +119,8 @@ class fileGameSystem:
             self.netSystem.msg_system.pending_acks[message_id] = {
                 'timestamp': timestamp,
                 'retries': 0,
-                'message': invite_message
+                'message': invite_message,
+                'target_user': to_user
             }
         
         print(f"🎮 Sent Tic-Tac-Toe invitation to {to_user} (Game: {game_id}, Symbol: {symbol})")
@@ -221,9 +222,9 @@ class fileGameSystem:
             "TO": opponent,
             "GAMEID": game_id,
             "MESSAGE_ID": message_id,
-            "POSITION": position,
+            "POSITION": str(position),  # Convert to string for LSNP
             "SYMBOL": our_symbol,
-            "TURN": game['turn_number'] - 1,  # Turn we just completed
+            "TURN": str(game['turn_number'] - 1),  # Convert to string
             "TOKEN": f"{user_id}|{timestamp + 3600}|{SCOPE_GAME}"
         }
         
@@ -235,7 +236,8 @@ class fileGameSystem:
             self.netSystem.msg_system.pending_acks[message_id] = {
                 'timestamp': timestamp,
                 'retries': 0,
-                'message': move_message
+                'message': move_message,
+                'target_user': opponent
             }
         
         # Display updated board
@@ -401,6 +403,14 @@ class fileGameSystem:
             print("❌ Invalid game move message")
             return
         
+        # Convert string values to integers
+        try:
+            position = int(position)
+            turn = int(turn)
+        except (ValueError, TypeError):
+            print("❌ Invalid position or turn value")
+            return
+        
         # Check if we have this game
         if game_id not in self.active_games:
             print(f"❌ Received move for unknown game {game_id}")
@@ -524,7 +534,7 @@ class fileGameSystem:
             "MESSAGE_ID": f"{random.getrandbits(64):016x}",
             "RESULT": result_info['result'],
             "SYMBOL": result_info['winner_symbol'] or '',
-            "TIMESTAMP": timestamp
+            "TIMESTAMP": str(timestamp)  # Convert to string for LSNP
         }
         
         if result_info['winning_line']:
