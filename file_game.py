@@ -521,8 +521,38 @@ class fileGameSystem:
             'message_id': message_id
         }
         
-        # Send invitation
-        self.netSystem.send_message(invite_message)
+        # Send invitation to specific user
+        # Look up user's IP from known peers instead of extracting from username
+        target_ip = None
+        target_port = 50999
+        
+        # Check if to_user contains an IP (format: user@ip)
+        if '@' in to_user:
+            target_ip = to_user.split('@')[-1]
+        else:
+            # Look up the user's IP from known peers/clients
+            if hasattr(self.netSystem, 'msg_system') and self.netSystem.msg_system:
+                # Check peers from message system
+                for peer_id, peer_info in getattr(self.netSystem.msg_system, 'peers', {}).items():
+                    if peer_id.startswith(to_user + '@') or peer_id == to_user:
+                        if '@' in peer_id:
+                            target_ip = peer_id.split('@')[-1]
+                        break
+                
+                # If not found in peers, check known clients
+                if not target_ip:
+                    # For now, default to broadcast if we can't find the specific IP
+                    print(f"[WARN] Could not find IP for user {to_user}, broadcasting invitation")
+                    invite_message["BROADCAST"] = True
+                    self.netSystem.send_message(invite_message)
+                    return game_id
+        
+        if target_ip:
+            self.netSystem.send_message(invite_message, target_ip=target_ip, target_port=target_port)
+        else:
+            # Fallback to broadcast
+            invite_message["BROADCAST"] = True
+            self.netSystem.send_message(invite_message)
         
         # Add to pending ACKs if msg_system exists
         if hasattr(self.netSystem, 'msg_system') and self.netSystem.msg_system:
