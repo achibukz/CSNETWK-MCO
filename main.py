@@ -945,18 +945,52 @@ class LSNPClient:
     def send_file_menu(self):
         """Menu for sending files."""
         print("\n=== Send File ===")
-        to_user = input("Enter recipient user_id (e.g., user@127.0.0.1): ").strip()
-        if not to_user:
-            print("❌ Recipient user_id is required.")
-            return
         
-        file_path = input("Enter file path: ").strip()
+        # Ensure uploads directory exists
+        os.makedirs("uploads", exist_ok=True)
+        
+        # Show available files in uploads folder
+        upload_files = []
+        if os.path.exists("uploads"):
+            upload_files = [f for f in os.listdir("uploads") if os.path.isfile(os.path.join("uploads", f))]
+        
+        if upload_files:
+            print("📁 Files available in 'uploads' folder:")
+            for i, filename in enumerate(upload_files, 1):
+                file_path = os.path.join("uploads", filename)
+                size = os.path.getsize(file_path)
+                print(f"  {i}. {filename} ({size:,} bytes)")
+            print(f"  {len(upload_files) + 1}. Enter custom file path")
+            print()
+            
+            try:
+                choice = input("Select file to send (number or 'cancel'): ").strip()
+                if choice.lower() == 'cancel':
+                    return
+                
+                choice_num = int(choice)
+                if 1 <= choice_num <= len(upload_files):
+                    file_path = upload_files[choice_num - 1]  # Just the filename
+                elif choice_num == len(upload_files) + 1:
+                    file_path = input("Enter file path: ").strip()
+                else:
+                    print("❌ Invalid selection.")
+                    return
+            except ValueError:
+                print("❌ Please enter a valid number.")
+                return
+        else:
+            print("📁 No files found in 'uploads' folder.")
+            print("💡 Tip: Place files in the 'uploads' folder for easy access.")
+            file_path = input("Enter file path: ").strip()
+        
         if not file_path:
             print("❌ File path is required.")
             return
         
-        if not os.path.exists(file_path):
-            print(f"❌ File not found: {file_path}")
+        to_user = input("Enter recipient user_id (e.g., user@127.0.0.1): ").strip()
+        if not to_user:
+            print("❌ Recipient user_id is required.")
             return
         
         description = input("Enter file description (optional): ").strip()
@@ -964,8 +998,11 @@ class LSNPClient:
         try:
             file_id = self.fileGameSystem.send_file(to_user, file_path, description)
             print(f"✅ File offer sent! File ID: {file_id}")
+            print(f"📤 Sending file to {to_user}...")
         except Exception as e:
             print(f"❌ Failed to send file: {e}")
+            if "File not found" in str(e):
+                print("💡 Tip: Place your files in the 'uploads' folder or use absolute paths.")
     
     def file_management_menu(self):
         """Menu for managing file transfers."""
@@ -975,7 +1012,9 @@ class LSNPClient:
             print("2. Accept File Offer")
             print("3. Reject File Offer")
             print("4. Show File Transfer Status")
-            print("5. Back to Main Menu")
+            print("5. Show Downloaded Files")
+            print("6. Show Upload Folder Contents")
+            print("7. Back to Main Menu")
             
             choice = input("Enter choice: ").strip()
             
@@ -988,6 +1027,10 @@ class LSNPClient:
             elif choice == "4":
                 self.show_file_transfer_status()
             elif choice == "5":
+                self.show_downloaded_files()
+            elif choice == "6":
+                self.show_upload_folder()
+            elif choice == "7":
                 break
             else:
                 print("❌ Invalid choice. Please try again.")
@@ -1070,6 +1113,78 @@ class LSNPClient:
             print(f"   Progress: {transfer['progress']}")
             print(f"   File ID: {transfer['file_id']}")
             print()
+
+    def show_downloaded_files(self):
+        """Show files in the downloads folder."""
+        downloads_dir = "downloads"
+        
+        if not os.path.exists(downloads_dir):
+            print("📁 Downloads folder doesn't exist yet.")
+            print("💡 Files will appear here after successful file transfers.")
+            return
+        
+        files = [f for f in os.listdir(downloads_dir) if os.path.isfile(os.path.join(downloads_dir, f))]
+        
+        if not files:
+            print("📁 Downloads folder is empty.")
+            print("💡 Accepted files will be saved here.")
+            return
+        
+        print(f"\n📥 Downloaded Files ({len(files)}):")
+        total_size = 0
+        
+        for i, filename in enumerate(files, 1):
+            file_path = os.path.join(downloads_dir, filename)
+            size = os.path.getsize(file_path)
+            total_size += size
+            
+            # Get file modification time
+            mtime = os.path.getmtime(file_path)
+            import datetime
+            mod_time = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+            
+            print(f"{i}. {filename}")
+            print(f"   Size: {size:,} bytes")
+            print(f"   Downloaded: {mod_time}")
+            print()
+        
+        print(f"📊 Total: {len(files)} files, {total_size:,} bytes")
+    
+    def show_upload_folder(self):
+        """Show files in the uploads folder."""
+        uploads_dir = "uploads"
+        
+        # Ensure uploads directory exists
+        os.makedirs(uploads_dir, exist_ok=True)
+        
+        files = [f for f in os.listdir(uploads_dir) if os.path.isfile(os.path.join(uploads_dir, f))]
+        
+        if not files:
+            print("📁 Uploads folder is empty.")
+            print("💡 Place files here to send them easily via LSNP.")
+            print(f"📂 Folder location: {os.path.abspath(uploads_dir)}")
+            return
+        
+        print(f"\n📤 Upload Folder Contents ({len(files)}):")
+        total_size = 0
+        
+        for i, filename in enumerate(files, 1):
+            file_path = os.path.join(uploads_dir, filename)
+            size = os.path.getsize(file_path)
+            total_size += size
+            
+            # Get file modification time
+            mtime = os.path.getmtime(file_path)
+            import datetime
+            mod_time = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+            
+            print(f"{i}. {filename}")
+            print(f"   Size: {size:,} bytes")
+            print(f"   Modified: {mod_time}")
+            print()
+        
+        print(f"📊 Total: {len(files)} files, {total_size:,} bytes")
+        print(f"📂 Folder location: {os.path.abspath(uploads_dir)}")
 
     def show_pending_file_offers_list(self):
         """Show all pending file offers and return list."""

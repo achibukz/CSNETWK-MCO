@@ -54,6 +54,20 @@ class fileGameSystem:
     
     def send_file(self, to_user, file_path, description=""):
         """Send a file offer to another user according to LSNP specs."""
+        # Check if file exists in uploads folder or use absolute path
+        if not os.path.isabs(file_path):
+            # If relative path, check in uploads folder first
+            uploads_path = os.path.join("uploads", file_path)
+            if os.path.exists(uploads_path):
+                file_path = uploads_path
+            elif not os.path.exists(file_path):
+                # Create uploads folder if it doesn't exist
+                os.makedirs("uploads", exist_ok=True)
+                raise FileNotFoundError(f"File not found: {file_path}. Please place files in 'uploads' folder.")
+        
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+        
         # Generate file metadata
         file_id = str(uuid.uuid4())[:8]  # 8-character file ID
         filename = os.path.basename(file_path)
@@ -99,6 +113,7 @@ class fileGameSystem:
         
         if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
             print(f"[FILE] Sent file offer for {filename} to {to_user} (ID: {file_id})")
+            print(f"[FILE] File source: {file_path}")
         
         # Start sending chunks after a short delay to allow receiver to be ready
         # This is a simplified approach - in a real implementation, you might want
@@ -141,6 +156,10 @@ class fileGameSystem:
         
         # Non-verbose printing as per specs: "User alice is sending you a file do you accept?"
         print(f"User {display_name} is sending you a file do you accept?")
+        print(f"📁 File: {filename} ({filesize} bytes)")
+        if description:
+            print(f"📝 Description: {description}")
+        print(f"🆔 File ID: {file_id}")
         
         # Verbose mode additional info
         if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
@@ -151,6 +170,7 @@ class fileGameSystem:
             print(f"  - Type: {filetype}")
             print(f"  - Description: {description}")
             print(f"  - File ID: {file_id}")
+            print(f"  - Will be saved to: downloads/{filename}")
     
     def accept_file_offer(self, file_id):
         """Accept a file offer and prepare to receive chunks."""
@@ -172,8 +192,12 @@ class fileGameSystem:
             "received_chunks": 0
         }
         
+        # Ensure downloads directory exists
+        os.makedirs("downloads", exist_ok=True)
+        
         if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
             print(f"[FILE] Accepted file offer {file_id} ({offer['filename']}) from {offer['from_user']}")
+            print(f"[FILE] File will be saved to: downloads/{offer['filename']}")
         
         # According to LSNP specs, there's no FILE_ACCEPT message
         # The receiver just starts accepting chunks when they arrive

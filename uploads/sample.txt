@@ -1,0 +1,28 @@
+Hello, this is a sample file for LSNP file transfer testing!
+
+This file is placed in the uploads folder and can be easily sent using the LSNP client.
+
+Features of LSNP File Transfer:
+==============================
+✅ FILE_OFFER message with metadata
+✅ FILE_CHUNK messages with base64 encoding  
+✅ FILE_RECEIVED confirmation
+✅ Automatic file reconstruction
+✅ Downloads folder organization
+
+Test Instructions:
+==================
+1. Start two LSNP clients on different ports
+2. Use option "19. 📁 Send File" to send this file
+3. Accept the file on the receiving client
+4. Check the downloads folder for the received file
+
+File Transfer Specifications (LSNP):
+====================================
+- Uses UDP transport on port 50999
+- Files split into 1KB chunks by default
+- Base64 encoding for binary safety
+- Token-based authentication
+- Automatic chunk reassembly
+
+End of sample file.
