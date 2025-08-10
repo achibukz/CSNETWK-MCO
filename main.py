@@ -6,6 +6,7 @@ from msg_System import msgSystem
 from file_game import fileGameSystem
 from grp_ui import groupUISystem
 from vars import *
+from GameSupport import *
 
 class LSNPClient:
     def __init__(self, user_id, display_name, port, verbose=False):
@@ -60,7 +61,8 @@ class LSNPClient:
             print("15. Show token validation stats")
             print("16. Show valid messages log")
             print("17. Revoke a token")
-            print("18. Quit")
+            print("18. Tic-Tac-Toe")
+            print("19. Quit")
 
             choice = input("Enter choice: ").strip()
 
@@ -130,8 +132,12 @@ class LSNPClient:
 
             elif choice == "17":
                 self.revoke_token_manually()
-
+            
             elif choice == "18":
+                self.TicTacToe.main()
+                        
+
+            elif choice == "19":
                 print("Exiting...")
                 break
 

@@ -274,3 +274,37 @@ class TicTacToe:
 
         if self.verbose:
             print("Game reset")
+    def main():
+        print("LSNP Tic-Tac-Toe (VM mode)")
+        username = input("Username: ").strip() or "player"
+        verbose = input("Verbose? (y/N): ").lower().startswith("y")
+        vm = TicTacToe(username, LSNP_PORT, verbose=verbose)
+
+        print("\nCommands:")
+        print("  invite <IP>           Send invite to IP (you will be assigned X by default)")
+        print("  move <0-8>            Make a move when it's your turn")
+        print("  quit                  Exit\n")
+
+        while True:
+            try:
+                cmd = input("> ").strip().split()
+                if not cmd:
+                    continue
+                if cmd[0] == "invite" and len(cmd) == 2:
+                    target = cmd[1]
+                    vm.invite(target)
+                elif cmd[0] == "move" and len(cmd) == 2:
+                    try:
+                        pos = int(cmd[1])
+                    except:
+                        print("Position must be an integer 0-8")
+                        continue
+                    vm.move(pos)
+                elif cmd[0] == "quit":
+                    print("Bye.")
+                    break
+                else:
+                    print("Unknown command.")
+            except KeyboardInterrupt:
+                print("\nExiting.")
+                break
