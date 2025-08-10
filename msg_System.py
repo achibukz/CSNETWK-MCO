@@ -987,9 +987,9 @@ class msgSystem:
         
         group = self.groups[group_id]
         
-        # Check if user is authorized (creator or existing member)
-        if self.user_id not in group['members']:
-            print(f"❌ You are not a member of group '{group_id}'.")
+        # Check if user is the group creator (only creators can update groups)
+        if self.user_id != group['creator']:
+            print(f"❌ Only the group creator can update group '{group_id}'.")
             return False
         
         # Process additions

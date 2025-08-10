@@ -1061,6 +1061,11 @@ class LSNPClient:
             selected_group = groups[idx]
             group_id = selected_group['group_id']
             
+            # Check if user is the creator or has permission to update
+            if self.user_id != selected_group['creator']:
+                print(f"❌ Only the group creator ({selected_group['creator']}) can update this group.")
+                return
+            
             print(f"\nUpdating group: {selected_group['name']}")
             print("1. Add members")
             print("2. Remove members")
@@ -1101,10 +1106,10 @@ class LSNPClient:
                     print("No available users to add.")
             
             if action in ['2', '3']:
-                # Remove members
-                current_members = [m for m in selected_group['members'] if m != self.user_id and m != selected_group['creator']]
+                # Remove members (only creator can remove, and can't remove themselves)
+                current_members = [m for m in selected_group['members'] if m != self.user_id]
                 if current_members:
-                    print("\nCurrent members (excluding creator):")
+                    print("\nCurrent members (you can remove):")
                     for i, member in enumerate(current_members, 1):
                         display_name = self.msgSystem.get_display_name(member)
                         print(f"  {i}. {display_name} ({member})")
@@ -1124,7 +1129,7 @@ class LSNPClient:
                         except ValueError:
                             print("Invalid input.")
                 else:
-                    print("No members available to remove.")
+                    print("No members available to remove (group only has creator).")
             
             if add_members or remove_members:
                 success = self.msgSystem.update_group(group_id, add_members, remove_members)
