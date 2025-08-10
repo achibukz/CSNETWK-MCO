@@ -489,6 +489,17 @@ class msgSystem:
         """Handle incoming LIKE messages."""
         from_user = message.get("FROM")
         action = message.get("ACTION", "LIKE")
+        message_id = message.get("MESSAGE_ID")
+        
+        # Check for duplicate messages
+        if message_id and message_id in self.processed_messages:
+            if self.netSystem.verbose:
+                print(f"[DEBUG] Ignoring duplicate LIKE: {message_id}")
+            return
+        
+        # Mark message as processed
+        if message_id:
+            self.processed_messages.add(message_id)
         
         display_name = self.get_display_name(from_user)
         print(f"{self.get_timestamp_str()} [LIKE] {display_name} {action.lower()}d your post")
@@ -652,7 +663,30 @@ class msgSystem:
         for message_id, ack_info in to_retry:
             ack_info['retries'] += 1
             ack_info['timestamp'] = current_time
-            self.send_message_with_ack(ack_info['message'], ack_info['target_user'])
+            
+            # Resend the exact same message (don't call send_message_with_ack again)
+            try:
+                # Resolve target IP from user ID
+                target_user_id = ack_info['target_user']
+                ip_address = self.resolve_user_to_ip(target_user_id)
+                target_port = 50999  # Default LSNP port
+                
+                # Check if we have a known port for this IP
+                for known_ip, known_port in self.netSystem.known_clients:
+                    if known_ip == ip_address:
+                        target_port = known_port
+                        break
+                
+                self.netSystem.send_message(ack_info['message'], target_ip=ip_address, target_port=target_port)
+                
+                if self.netSystem.verbose:
+                    print(f"{self.get_timestamp_str()} [RETRY] Resent message {message_id} to {target_user_id} (attempt {ack_info['retries']})")
+                    
+            except Exception as e:
+                if self.netSystem.verbose:
+                    print(f"{self.get_timestamp_str()} [ERROR] Failed to retry message {message_id}: {e}")
+                # Add to removal list if retry fails
+                to_remove.append(message_id)
             
         # Remove failed messages
         for message_id in to_remove:
