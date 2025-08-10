@@ -4,6 +4,8 @@ import time
 import random
 import base64
 import os
+import uuid
+import mimetypes
 from vars import *
 
 class fileGameSystem:
@@ -14,6 +16,7 @@ class fileGameSystem:
         self.active_games = {}  # {game_id: game_data}
         self.game_invites = {}  # {game_id: invite_data}
         self.pending_moves = {}  # {message_id: move_data} for retries
+        self.processed_messages = {}  # {message_id: timestamp} for deduplication
         
         # File transfer management
         self.file_offers = {}   # {file_id: offer_data}
@@ -698,16 +701,30 @@ class fileGameSystem:
         
         game = self.active_games[game_id]
         
-        # Validate the move
-        if not self.validate_move(game_id, position, symbol, turn):
-            print(f"❌ Invalid move received: position {position}")
+        # Check for duplicate message IDs FIRST
+        message_id = message.get('MESSAGE_ID')
+        if message_id and message_id in self.processed_messages:
+            print(f"⚠️ Duplicate message {message_id} already processed, ignoring")
+            self.send_ack(message)
             return
         
-        # Check for duplicate moves (idempotency)
+        # Check if game is already finished
+        if game['status'] != 'active':
+            print(f"⚠️ Move received for finished game {game_id}, ignoring")
+            if message.get('MESSAGE_ID'):
+                self.send_ack(message)
+            return
+        
+        # Check for duplicate moves FIRST (idempotency)
         if self.handle_duplicate_move(game_id, turn):
             print(f"⚠️ Duplicate move detected for turn {turn}, ignoring")
             if message.get('MESSAGE_ID'):
                 self.send_ack(message)
+            return
+        
+        # Validate the move
+        if not self.validate_move(game_id, position, symbol, turn):
+            print(f"❌ Invalid move received: position {position}")
             return
         
         # Apply the move
@@ -736,8 +753,9 @@ class fileGameSystem:
                 print("3 | 4 | 5")
                 print("6 | 7 | 8")
         
-        # Send ACK
+        # Send ACK and track processed message
         if message.get('MESSAGE_ID'):
+            self.processed_messages[message.get('MESSAGE_ID')] = time.time()
             self.send_ack(message)
 
     def handle_game_result(self, message):
@@ -946,3 +964,16 @@ class fileGameSystem:
 
     def simulate_file_packet_loss(self):  # For testing
         pass
+
+    def cleanup_old_messages(self):
+        """Clean up old processed message IDs to prevent memory buildup."""
+        current_time = time.time()
+        cutoff_time = current_time - 3600  # Keep messages for 1 hour
+        
+        messages_to_remove = [
+            msg_id for msg_id, timestamp in self.processed_messages.items()
+            if timestamp < cutoff_time
+        ]
+        
+        for msg_id in messages_to_remove:
+            del self.processed_messages[msg_id]
