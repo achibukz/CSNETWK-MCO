@@ -1231,11 +1231,16 @@ class msgSystem:
         # Check if we're in the members list
         members = [m.strip() for m in members_str.split(",") if m.strip()]
         print(f"[DEBUG] Group members: {members}")
-        print(f"[DEBUG] My user_id: {self.user_id}")
+        print(f"[DEBUG] My user_id: '{self.user_id}'")
+        print(f"[DEBUG] Checking membership...")
+        for i, member in enumerate(members):
+            print(f"[DEBUG]   Member {i}: '{member}' == '{self.user_id}' ? {member == self.user_id}")
         
         if self.user_id not in members:
-            print(f"[DEBUG] Not a member of group {group_id}")
+            print(f"[DEBUG] ❌ Not a member of group {group_id} - user_id mismatch!")
             return
+        
+        print(f"[DEBUG] ✅ Confirmed as member of group {group_id}")
         
         # Mark message as processed
         if message_id:
