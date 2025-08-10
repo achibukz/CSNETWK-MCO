@@ -125,17 +125,7 @@ class fileGameSystem:
             print(f"[FILE] Sent file offer for {filename} to {to_user} (ID: {file_id})")
             print(f"[FILE] File source: {file_path}")
             print(f"[FILE] Target: {target_ip}:{target_port}")
-        
-        # Start sending chunks after a short delay to allow receiver to be ready
-        # This is a simplified approach - in a real implementation, you might want
-        # explicit acceptance before sending chunks
-        import threading
-        def delayed_send():
-            time.sleep(2)  # Give receiver time to accept
-            self.send_file_chunks(file_id)
-        
-        thread = threading.Thread(target=delayed_send, daemon=True)
-        thread.start()
+            print(f"[FILE] Use file management menu to start transmission when ready")
         
         return file_id
     
@@ -436,6 +426,11 @@ class fileGameSystem:
     def get_pending_file_offers(self):
         """Get list of pending file offers."""
         return self.pending_file_offers.copy()
+    
+    def get_outgoing_files(self):
+        """Get list of outgoing files awaiting transmission."""
+        return {file_id: info for file_id, info in self.outgoing_files.items() 
+                if info.get("status") in ["OFFERED", "READY"]}
     
     def get_file_transfers(self):
         """Get status of ongoing file transfers."""

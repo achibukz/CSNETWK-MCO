@@ -998,7 +998,8 @@ class LSNPClient:
         try:
             file_id = self.fileGameSystem.send_file(to_user, file_path, description)
             print(f"✅ File offer sent! File ID: {file_id}")
-            print(f"📤 Sending file to {to_user}...")
+            print(f"📤 File offer sent to {to_user}")
+            print(f"💡 Use 'File Management' → 'Start File Transmission' to begin sending when ready")
         except Exception as e:
             print(f"❌ Failed to send file: {e}")
             if "File not found" in str(e):
@@ -1011,10 +1012,12 @@ class LSNPClient:
             print("1. Show Pending File Offers")
             print("2. Accept File Offer")
             print("3. Reject File Offer")
-            print("4. Show File Transfer Status")
-            print("5. Show Downloaded Files")
-            print("6. Show Upload Folder Contents")
-            print("7. Back to Main Menu")
+            print("4. Show Outgoing Files")
+            print("5. Start File Transmission")
+            print("6. Show File Transfer Status")
+            print("7. Show Downloaded Files")
+            print("8. Show Upload Folder Contents")
+            print("9. Back to Main Menu")
             
             choice = input("Enter choice: ").strip()
             
@@ -1025,12 +1028,16 @@ class LSNPClient:
             elif choice == "3":
                 self.reject_file_offer_menu()
             elif choice == "4":
-                self.show_file_transfer_status()
+                self.show_outgoing_files()
             elif choice == "5":
-                self.show_downloaded_files()
+                self.start_file_transmission_menu()
             elif choice == "6":
-                self.show_upload_folder()
+                self.show_file_transfer_status()
             elif choice == "7":
+                self.show_downloaded_files()
+            elif choice == "8":
+                self.show_upload_folder()
+            elif choice == "9":
                 break
             else:
                 print("❌ Invalid choice. Please try again.")
@@ -1185,6 +1192,85 @@ class LSNPClient:
         
         print(f"📊 Total: {len(files)} files, {total_size:,} bytes")
         print(f"📂 Folder location: {os.path.abspath(uploads_dir)}")
+
+    def show_outgoing_files(self):
+        """Show files awaiting transmission."""
+        outgoing_files = self.fileGameSystem.get_outgoing_files()
+        
+        if not outgoing_files:
+            print("📤 No files awaiting transmission.")
+            print("💡 Send a file offer first, then start transmission manually.")
+            return
+        
+        print(f"\n📤 Outgoing Files Awaiting Transmission ({len(outgoing_files)}):")
+        
+        for i, (file_id, file_info) in enumerate(outgoing_files.items(), 1):
+            filename = file_info.get("filename", "Unknown")
+            to_user = file_info.get("to_user", "Unknown")
+            filesize = file_info.get("filesize", 0)
+            status = file_info.get("status", "Unknown")
+            description = file_info.get("description", "")
+            
+            print(f"{i}. {filename} ({filesize:,} bytes)")
+            print(f"   To: {to_user}")
+            print(f"   Status: {status}")
+            if description:
+                print(f"   Description: {description}")
+            print(f"   File ID: {file_id}")
+            print()
+    
+    def start_file_transmission_menu(self):
+        """Menu to start file transmission."""
+        outgoing_files = self.fileGameSystem.get_outgoing_files()
+        
+        if not outgoing_files:
+            print("📤 No files awaiting transmission.")
+            print("💡 Send a file offer first using option '19. 📁 Send File'.")
+            return
+        
+        print(f"\n📤 Select File to Start Transmission:")
+        file_list = []
+        
+        for i, (file_id, file_info) in enumerate(outgoing_files.items(), 1):
+            filename = file_info.get("filename", "Unknown")
+            to_user = file_info.get("to_user", "Unknown")
+            filesize = file_info.get("filesize", 0)
+            status = file_info.get("status", "Unknown")
+            
+            print(f"{i}. {filename} ({filesize:,} bytes)")
+            print(f"   To: {to_user}")
+            print(f"   Status: {status}")
+            print(f"   File ID: {file_id}")
+            print()
+            
+            file_list.append({
+                "file_id": file_id,
+                "file_info": file_info
+            })
+        
+        try:
+            choice = input("Enter file number to start transmission (or 'cancel'): ").strip()
+            if choice.lower() == 'cancel':
+                return
+            
+            idx = int(choice) - 1
+            if 0 <= idx < len(file_list):
+                file_id = file_list[idx]["file_id"]
+                file_info = file_list[idx]["file_info"]
+                
+                print(f"🚀 Starting transmission of {file_info['filename']} to {file_info['to_user']}...")
+                
+                if self.fileGameSystem.send_file_chunks(file_id):
+                    print(f"✅ File transmission started successfully!")
+                    print(f"📊 Check 'Show File Transfer Status' to monitor progress.")
+                else:
+                    print(f"❌ Failed to start file transmission.")
+            else:
+                print("❌ Invalid selection.")
+        except ValueError:
+            print("❌ Please enter a valid number.")
+        except Exception as e:
+            print(f"❌ Error starting transmission: {e}")
 
     def show_pending_file_offers_list(self):
         """Show all pending file offers and return list."""
