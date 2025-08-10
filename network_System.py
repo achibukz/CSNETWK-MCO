@@ -48,9 +48,9 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
         # Allow address reuse to avoid TIME_WAIT issues
         self.serverSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         
-        # Force binding to port 50999 only - no fallback
+        # Force binding to port 50999 on all interfaces to receive cross-device broadcasts
         try:
-            self.serverSocket.bind(('127.0.0.1', 50999))
+            self.serverSocket.bind(('0.0.0.0', 50999))
             print(f"Ready to receive on port 50999...")
             bound_successfully = True
         except OSError as e:
