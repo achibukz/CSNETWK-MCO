@@ -235,7 +235,26 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
             elif msg_type in [MSG_GROUP_CREATE, MSG_GROUP_UPDATE, MSG_GROUP_MESSAGE]:
                 self.log_message(f"[GROUP]", message)
             elif msg_type in [MSG_FILE_OFFER, MSG_FILE_CHUNK, MSG_FILE_RECEIVED]:
-                self.log_message(f"[FILE]", message)
+                if msg_type == MSG_FILE_OFFER:
+                    if hasattr(self, 'file_game_system') and self.file_game_system:
+                        self.file_game_system.handle_file_offer(message)
+                    else:
+                        print(f"{self.get_timestamp_str()}[FILE] {message}")
+                elif msg_type == MSG_FILE_ACCEPT:
+                    if hasattr(self, 'file_game_system') and self.file_game_system:
+                        self.file_game_system.handle_file_accept(message)
+                    else:
+                        print(f"{self.get_timestamp_str()}[FILE] {message}")
+                elif msg_type == MSG_FILE_CHUNK:
+                    if hasattr(self, 'file_game_system') and self.file_game_system:
+                        self.file_game_system.receive_file_chunk(message)
+                    else:
+                        print(f"{self.get_timestamp_str()}[FILE] {message}")
+                elif msg_type == MSG_FILE_RECEIVED:
+                    if hasattr(self, 'file_game_system') and self.file_game_system:
+                        self.file_game_system.handle_file_received(message)
+                    else:
+                        print(f"{self.get_timestamp_str()}[FILE] {message}")
             elif msg_type == "HELLO":  # HELLO is not in specs, so keep as string
                 hello_data = message.get('DATA', 'Hello message')
                 listen_port = message.get('LISTEN_PORT', LSNP_PORT)

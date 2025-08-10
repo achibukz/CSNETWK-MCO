@@ -5,8 +5,9 @@ import random
 from vars import *
 
 class msgSystem:
-    def __init__(self, netSystem):
+    def __init__(self, netSystem, fileGameSystem):
         self.netSystem = netSystem
+        self.fileGameSystem = fileGameSystem
         self.known_peers = {}  # Store peer information {user_id: {display_name, status, avatar}}
         self.stored_posts = []  # Store valid posts
         self.stored_dms = []    # Store DMs

@@ -41,24 +41,202 @@ class fileGameSystem:
     def offer_file(self, to_user, file_path, description=""):
         """Offer a file to another user."""
         # TODO: Implement file transfer functionality
-        print("📁 File transfer not yet implemented")
-        pass
+        file_name = os.path.basename(file_path)
+        file_size = os.path.getsize(file_path)
+        file_id = str(uuid.uuid4())[:8]  # Shorten for readability, or use as is
+        file_type, _ = mimetypes.guess_type(file_path)
+        timestamp = self.get_timestamp_str()
+        if not file_type:
+            file_type = "application/octet-stream"
+        ttl = 3600  # 1 hour default, adjust as needed
+        token_expiry = timestamp + ttl
+
+        # Step 2: Lookup target IP and port
+        peer_info = self.netSystem.msg_system.known_peers.get(to_user)
+        if not peer_info:
+            print(f"User {to_user} not found in known peers.")
+            return None
+        target_ip = peer_info.get('ip')
+        target_port = peer_info.get('port', LSNP_PORT)
+
+        # Step 4: Create token
+        token = f"{self.user_id}|{timestamp + 3600}|{SCOPE_FILE}"
+
+        # Step 5: Create offer message (keys must match spec)
+        offer_message = {
+            "TYPE": MSG_FILE_OFFER,
+            "FROM": self.user_id,
+            "TO": to_user,
+            "FILENAME": file_name,
+            "FILESIZE": file_size,
+            "FILETYPE": file_type,
+            "FILEID": file_id,
+            "DESCRIPTION": description,
+            "TIMESTAMP": 0, # Placeholder for actual timestamp
+            "TOKEN": token
+        }
+
+        # Step 6: Send offer to recipient
+        self.netSystem.send_message(offer_message, target_ip=target_ip, target_port=target_port)
+
+        # Step 7: Store offer locally
+        self.file_offers[file_id] = {
+            "to_user": to_user,
+            "file_path": file_path,
+            "description": description,
+            "status": "OFFERED"
+        }
+
+        return file_id
+
+    def handle_file_offer(self, message):
+        """Handle incoming FILE_OFFER messages."""
+        file_id = message.get("FILEID")
+        from_user = message.get("FROM")
+        filename = message.get("FILENAME")
+        filesize = message.get("FILESIZE")
+        description = message.get("DESCRIPTION", "")
+        timestamp = message.get("TIMESTAMP")
+        token = message.get("TOKEN")
+
+        # Store the offer locally for user action (accept/reject)
+        self.file_offers[file_id] = {
+            "from_user": from_user,
+            "filename": filename,
+            "filesize": filesize,
+            "description": description,
+            "timestamp": timestamp,
+            "token": token,
+            "status": "PENDING"
+        }
+
+        # Notify the user
+        display_name = self.get_display_name(from_user)
+        print(f"{self.get_timestamp_str()} [FILE OFFER] {display_name} wants to send you '{filename}' ({filesize} bytes): {description}")
+        print(f"Use accept_file_offer('{file_id}', '{from_user}') to accept.")
 
     def accept_file_offer(self, file_id, from_user):
-        """Accept a file offer."""
-        # TODO: Implement file transfer functionality
-        print("📁 File transfer not yet implemented")
-        pass
+        """Accept a pending file offer and notify the sender."""
+        # Check if the offer exists and is pending
+        offer = getattr(self, "pending_file_offers", {}).get(file_id)
+        if not offer or offer.get("status") != "PENDING":
+            print(f"[FILE] No pending offer with ID {file_id}.")
+            return False
+
+        # Prepare FILE_ACCEPT message
+        timestamp = int(time.time())
+        token = f"{self.user_id}|{timestamp + 3600}|{SCOPE_FILE}"
+
+        message = {
+            "TYPE": "FILE_ACCEPT",
+            "FILEID": file_id,
+            "FROM": self.user_id,
+            "TO": from_user,
+            "TIMESTAMP": timestamp,
+            "TOKEN": token
+        }
+
+        # Extract IP and port from from_user (user_id format: name@ip)
+        ip_address = from_user.rsplit('@', 1)[1] if '@' in from_user else "127.0.0.1"
+        target_port = LSNP_PORT
+        for known_ip, known_port in self.netSystem.known_clients:
+            if known_ip == ip_address:
+                target_port = known_port
+                break
+
+        # Send FILE_ACCEPT message
+        self.netSystem.send_message(message, target_ip=ip_address, target_port=target_port)
+
+        # Update offer status
+        offer["status"] = "ACCEPTED"
+        print(f"[FILE] Accepted file offer {file_id} from {from_user}.")
+        return True
+    
+    def handle_file_accept(self, message):
+        file_id = message.get("FILEID")
+        offer = self.file_offers.get(file_id)
+        if not offer:
+            print(f"[FILE] No offer found for file_id {file_id}")
+            return
+
+        file_path = offer.get("file_path")
+        if not file_path or not os.path.exists(file_path):
+            print(f"[FILE] File not found: {file_path}")
+            return
+
+        # Read and send file in chunks
+        chunk_size = 4096
+        with open(file_path, "rb") as f:
+            chunk_index = 0
+            while True:
+                data = f.read(chunk_size)
+                if not data:
+                    break
+                self.send_file_chunk(file_id, chunk_index, data)
+                chunk_index += 1
+        print(f"[FILE] Finished sending file {file_id}")
 
     def send_file_chunk(self, file_id, chunk_index, data):
-        """Send a file chunk."""
-        # TODO: Implement file transfer functionality
-        pass
+        """Send a file chunk to the recipient."""
+        offer = self.file_offers.get(file_id)
+        if not offer:
+            print(f"[FILE] No offer found for file_id {file_id}")
+            return False
+
+        to_user = offer.get("to_user")
+        peer_info = self.netSystem.msg_system.known_peers.get(to_user)
+        if not peer_info:
+            print(f"[FILE] Recipient {to_user} not found in known peers.")
+            return False
+
+        target_ip = peer_info.get('ip')
+        target_port = peer_info.get('port', LSNP_PORT)
+
+        # Encode data as base64 for safe transmission
+        encoded_data = base64.b64encode(data).decode('ascii')
+
+        chunk_message = {
+            "TYPE": MSG_FILE_CHUNK,
+            "FROM": self.user_id,
+            "TO": to_user,
+            "FILEID": file_id,
+            "CHUNK_INDEX": chunk_index,
+            "DATA": encoded_data,
+            "TIMESTAMP": int(time.time()),
+            "TOKEN": f"{self.user_id}|{int(time.time()) + 3600}|{SCOPE_FILE}"
+        }
+
+        self.netSystem.send_message(chunk_message, target_ip=target_ip, target_port=target_port)
+        print(f"[FILE] Sent chunk {chunk_index} of file {file_id} to {to_user}")
+        return True
 
     def receive_file_chunk(self, message):
-        """Receive a file chunk."""
-        # TODO: Implement file transfer functionality
-        pass
+        """Receive a file chunk and store it."""
+        file_id = message.get("FILEID")
+        chunk_index = message.get("CHUNK_INDEX")
+        encoded_data = message.get("DATA")
+
+        if file_id is None or chunk_index is None or encoded_data is None:
+            print("[FILE] Invalid file chunk message received.")
+            return False
+
+        try:
+            chunk_index = int(chunk_index)
+            data = base64.b64decode(encoded_data)
+        except Exception as e:
+            print(f"[FILE] Error decoding chunk: {e}")
+            return False
+
+        # Store chunk
+        if file_id not in self.file_chunks:
+            self.file_chunks[file_id] = {}
+        self.file_chunks[file_id][chunk_index] = data
+
+        print(f"[FILE] Received chunk {chunk_index} for file {file_id}")
+
+        # Optionally, check if all chunks are received and reconstruct file here
+
+        return True
 
     def reconstruct_file(self, file_id):
         """Reconstruct a file from chunks."""

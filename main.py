@@ -15,8 +15,8 @@ class LSNPClient:
         self.listen_port = port
         
         self.networkSystem = networkSystem(port, verbose=verbose)
-        self.msgSystem = msgSystem(self.networkSystem)
         self.fileGameSystem = fileGameSystem(self.networkSystem)
+        self.msgSystem = msgSystem(self.networkSystem, self.fileGameSystem)
         self.groupUISystem = groupUISystem(
             self.networkSystem, 
             self.msgSystem, 
@@ -60,7 +60,9 @@ class LSNPClient:
             print("16. Show valid messages log")
             print("17. Revoke a token")
             print("18. 🎮 Tic-Tac-Toe Game")
-            print("19. Quit")
+            print("19. Send File Offer")
+            print("20. Show Pending File Offers")
+            print("21. Quit")
 
             choice = input("Enter choice: ").strip()
 
@@ -135,6 +137,18 @@ class LSNPClient:
                 self.tic_tac_toe_menu()
 
             elif choice == "19":
+                self.fileGameSystem.offer_file()
+
+            elif choice == "20":
+                print("\n=== Pending File Offers ===")
+                pending_offers = self.show_pending_file_offers()
+                if pending_offers:
+                    for offer in pending_offers:
+                        print(f"  - {offer['FILENAME']} from {offer['FROM']} (ID: {offer['FILEID']})")
+                else:
+                    print("No pending file offers.")
+
+            elif choice == "21":
                 print("Exiting...")
                 break
 
@@ -908,6 +922,39 @@ class LSNPClient:
             print("Invalid input.")
         except Exception as e:
             print(f"Error: {e}")
+
+    def show_pending_file_offers(self):
+        """Show and handle pending file offers."""
+        offers = getattr(self.fileGameSystem, "pending_file_offers", {})
+        if not offers:
+            print("No pending file offers.")
+            return
+
+        print("\n=== Pending File Offers ===")
+        for i, (file_id, offer) in enumerate(offers.items(), 1):
+            from_user = offer.get("from_user", "Unknown")
+            filename = offer.get("filename", offer.get("file_path", "Unknown"))
+            filesize = offer.get("filesize", "Unknown")
+            description = offer.get("description", "")
+            status = offer.get("status", "PENDING")
+            print(f"{i}. From: {from_user}, File: {filename} ({filesize} bytes), Desc: {description}, Status: {status}, ID: {file_id}")
+
+        choice = input("Enter number to accept (or blank to cancel): ").strip()
+        if not choice.isdigit():
+            print("Cancelled.")
+            return
+
+        idx = int(choice) - 1
+        if idx < 0 or idx >= len(offers):
+            print("Invalid selection.")
+            return
+
+        file_id = list(offers.keys())[idx]
+        offer = offers[file_id]
+        from_user = offer.get("from_user")
+        # Call your accept logic here, e.g.:
+        self.msgSystem.accept_file_offer(file_id, from_user)
+        print(f"Accepted file offer {file_id} from {from_user}.")
 
 if __name__ == "__main__":
     import argparse
