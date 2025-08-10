@@ -317,9 +317,9 @@ class msgSystem:
             display_name = self.get_display_name(user_id)
             
             if not self.netSystem.verbose:
-                print(f"{self.get_timestamp_str()} [POST] {display_name}: {content}")
+                print(f"\n[POST] {display_name}: {content}\n")
             else:
-                print(f"{self.get_timestamp_str()} [POST] From {user_id} ({display_name}): {content}")
+                print(f"\n{self.get_timestamp_str()}[POST] From {user_id} ({display_name}): {content}\n")
         elif self.netSystem.verbose:
             print(f"{self.get_timestamp_str()} [DEBUG] POST rejected due to invalid token")
 
