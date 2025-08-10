@@ -195,14 +195,69 @@ class fileGameSystem:
         
         # Ensure downloads directory exists
         os.makedirs("downloads", exist_ok=True)
+
+        # Always show acceptance message (both verbose and non-verbose)
+        print(f"✅ File offer accepted! Ready to receive {offer['filename']} from {offer['from_user']}")
         
         if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
             print(f"[FILE] Accepted file offer {file_id} ({offer['filename']}) from {offer['from_user']}")
             print(f"[FILE] File will be saved to: downloads/{offer['filename']}")
         
+        # Send notification to sender that file was accepted
+        # Even though LSNP specs don't require FILE_ACCEPT, we'll send a simple notification
+        self.send_file_acceptance_notification(file_id, offer['from_user'])
+        
         # According to LSNP specs, there's no FILE_ACCEPT message
         # The receiver just starts accepting chunks when they arrive
         return True
+
+    def send_file_acceptance_notification(self, file_id, sender_user):
+        """Send a notification to the sender that the file offer was accepted."""
+        # Extract target IP
+        target_ip = None
+        target_port = 50999
+        
+        if '@' in sender_user:
+            target_ip = sender_user.split('@')[-1]
+        else:
+            # Look up the user's IP from known peers/clients
+            if hasattr(self.netSystem, 'msg_system') and self.netSystem.msg_system:
+                for peer_id, peer_info in getattr(self.netSystem.msg_system, 'peers', {}).items():
+                    if peer_id.startswith(sender_user + '@') or peer_id == sender_user:
+                        if '@' in peer_id:
+                            target_ip = peer_id.split('@')[-1]
+                        break
+        
+        if target_ip:
+            user_id = getattr(self.netSystem.msg_system, 'user_id', 'unknown@127.0.0.1')
+            
+            # Create a simple notification message (not part of official LSNP spec)
+            notification_message = {
+                "TYPE": "FILE_ACCEPTED",
+                "FROM": user_id,
+                "TO": sender_user,
+                "FILE_ID": file_id,
+                "MESSAGE": "File offer accepted, you can start sending",
+                "TIMESTAMP": str(int(time.time()))
+            }
+            
+            self.netSystem.send_message(notification_message, target_ip=target_ip, target_port=target_port)
+            
+            if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
+                print(f"[FILE] Sent acceptance notification to {sender_user}")
+
+    def handle_file_accepted(self, message):
+        """Handle FILE_ACCEPTED notification from receiver."""
+        file_id = message.get("FILE_ID")
+        from_user = message.get("FROM")
+        
+        if file_id in self.outgoing_files:
+            # Always show the message (both verbose and non-verbose)
+            filename = self.outgoing_files[file_id].get("filename", "unknown")
+            print(f"📤 File offer accepted by {from_user}! You can now send {filename}")
+            
+            if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
+                print(f"[FILE] File {file_id} accepted by {from_user}, ready to send chunks")
     
     def reject_file_offer(self, file_id):
         """Reject a file offer."""

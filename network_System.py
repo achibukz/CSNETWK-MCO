@@ -235,7 +235,7 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                         self.file_game_system.handle_game_result(message)
                 else:
                     self.log_message(f"[GAME]", message)
-            elif msg_type in [MSG_FILE_OFFER, MSG_FILE_CHUNK, MSG_FILE_RECEIVED]:
+            elif msg_type in [MSG_FILE_OFFER, MSG_FILE_CHUNK, MSG_FILE_RECEIVED, "FILE_ACCEPTED"]:
                 # File transfer messages - route to file_game_system
                 if msg_type == MSG_FILE_OFFER:
                     if hasattr(self, 'file_game_system') and self.file_game_system:
@@ -255,6 +255,12 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                     else:
                         if self.verbose:
                             print(f"[NETWORK] No file_game_system for FILE_RECEIVED")
+                elif msg_type == "FILE_ACCEPTED":
+                    if hasattr(self, 'file_game_system') and self.file_game_system:
+                        self.file_game_system.handle_file_accepted(message)
+                    else:
+                        if self.verbose:
+                            print(f"[NETWORK] No file_game_system for FILE_ACCEPTED")
             elif msg_type == "HELLO":  # HELLO is not in specs, so keep as string
                 # Skip processing our own HELLO messages
                 if is_self:
