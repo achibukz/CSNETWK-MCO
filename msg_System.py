@@ -349,9 +349,9 @@ class msgSystem:
                 display_name = self.get_display_name(from_user)
                 
                 if not self.netSystem.verbose:
-                    print(f"{self.get_timestamp_str()} [DM] {display_name}: {content}")
+                    print(f"\n[DM] {display_name}: {content}\n")
                 else:
-                    print(f"{self.get_timestamp_str()} [DM] From {from_user} ({display_name}): {content}")
+                    print(f"\n{self.get_timestamp_str()}[DM] From {from_user} ({display_name}): {content}\n")
             elif self.netSystem.verbose:
                 print(f"{self.get_timestamp_str()} [DEBUG] DM rejected due to invalid token")
 
@@ -370,7 +370,7 @@ class msgSystem:
             self.store_valid_message(message, {'token_valid': True, 'scope': SCOPE_FOLLOW})
             
             display_name = self.get_display_name(from_user)
-            print(f"{self.get_timestamp_str()} [FOLLOW] {display_name} started following you")
+            print(f"\n[FOLLOW] {display_name} started following you\n")
         elif to_user == self.user_id and self.netSystem.verbose:
             print(f"{self.get_timestamp_str()} [DEBUG] FOLLOW rejected due to invalid token")
 
@@ -389,7 +389,7 @@ class msgSystem:
             self.store_valid_message(message, {'token_valid': True, 'scope': SCOPE_FOLLOW})
             
             display_name = self.get_display_name(from_user)
-            print(f"{self.get_timestamp_str()} [UNFOLLOW] {display_name} unfollowed you")
+            print(f"\n[UNFOLLOW] {display_name} unfollowed you\n")
         elif to_user == self.user_id and self.netSystem.verbose:
             print(f"{self.get_timestamp_str()} [DEBUG] UNFOLLOW rejected due to invalid token")
 
