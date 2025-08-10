@@ -1,10 +1,9 @@
 # Member 1
 import threading
 import time
-import platform
+import socket
 
 from vars import *
-from socket import *
 
 class networkSystem: # NOTE: Should probs pass the ui class here to acomplish printing as well
     def __init__(self, port, verbose=False):
@@ -12,6 +11,11 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
         self.verbose = verbose
         self.known_clients = set()
         self.msg_system = None  # Will be set by main.py
+        
+        # Add thread lock for clean logging
+        self.log_lock = threading.Lock()
+        
+        self.start_listener()
 
     def get_timestamp_str(self):
         """Get formatted timestamp string for logging."""
@@ -21,23 +25,43 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
             return datetime.datetime.now().strftime('[%Y-%m-%d %H:%M:%S] ')
         return ""
 
+    def log_message(self, category, message, show_full=True):
+        """Log message in the new clean format with thread safety."""
+        if not self.verbose:
+            return
+            
+        with self.log_lock:
+            if show_full and isinstance(message, dict):
+                print(f"\n{self.get_timestamp_str()}{category}: {{")
+                # Format the message dictionary nicely
+                for key, value in message.items():
+                    if isinstance(value, str):
+                        print(f"\t'{key}': '{value}',")
+                    else:
+                        print(f"\t'{key}': {value},")
+                print("}\n")
+            else:
+                print(f"{self.get_timestamp_str()}{category}: {message}")
+
     def setup_socket(self):
-        self.serverSocket = socket(AF_INET, SOCK_DGRAM) # SOCK_DGRAM -> UDP
-        self.serverSocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1) # allows socket to reuse address
+        self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # SOCK_DGRAM -> UDP
+        # Allow address reuse to avoid TIME_WAIT issues
+        self.serverSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        
+        # Force binding to port 50999 only - no fallback
+        try:
+            self.serverSocket.bind(('127.0.0.1', 50999))
+            print(f"Ready to receive on port 50999...")
+            bound_successfully = True
+        except OSError as e:
+            print(f"Failed to bind to port 50999: {e}")
+            print("ERROR: Port 50999 is required but not available. Please close other instances.")
+            bound_successfully = False
+            return
 
-        if platform.system() == "Darwin":
-            try:
-                self.serverSocket.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)  # macOS fix
-            except AttributeError:
-                print(f"{self.get_timestamp_str()} [WARN] SO_REUSEPORT not supported on this platform")
-
-        #Prepare a sever socket - bind to all interfaces to receive from other devices
-        self.serverSocket.bind(('0.0.0.0', self.port))
-        print(f"Ready to receive on port {self.port}...")
-
-        while True:
+        # Only start listening if we successfully bound to port 50999
+        while bound_successfully:
             self.receive_message()
-        pass
 
     def start_listener(self):
         # Run it in the background
@@ -46,29 +70,19 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
 
     def send_message(self, message, target_ip=LSNP_PORT, target_port=LSNP_PORT):  # None for broadcast
         """Send an LSNP message via UDP to a target IP and port or everybody (if broadcast)."""
-        if self.verbose:
-            print("SENDING THE FF:")
-            print(message)
-            print("-----")
         try:
             # Convert to LSNP format (key-value pairs with \n\n terminator)
             lsnp_message = self._dict_to_lsnp(message)
             
-            with socket(AF_INET, SOCK_DGRAM) as clientSocket:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as clientSocket:
                 if message.get("BROADCAST", False):
-                    if self.verbose:
-                        print("Broadcasting!!!")
-                    clientSocket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
+                    clientSocket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
                     # Send to known clients
                     for ip, port in self.known_clients:
-                        if self.verbose:
-                            print("Known client:")
-                            print(f"{ip} {port}")
-                        
                         # Get our local IP for better self-detection
                         try:
-                            temp_socket = socket(AF_INET, SOCK_DGRAM)
+                            temp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                             temp_socket.connect(("8.8.8.8", 80))
                             local_ip = temp_socket.getsockname()[0]
                             temp_socket.close()
@@ -84,22 +98,20 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                             if self.verbose:
                                 local_send_ip, local_send_port = clientSocket.getsockname()
                                 print(f"[SEND] From {local_send_ip}:{local_send_port} To {ip}:{port}")
-                        elif self.verbose:
-                            print(f"Skipping self: {ip}:{port}")
                     
                     # Also send to broadcast address for device discovery
                     try:
                         broadcast_addr = "255.255.255.255"  # Limited broadcast
                         clientSocket.sendto(lsnp_message.encode(), (broadcast_addr, LSNP_PORT))
                         if self.verbose:
-                            print(f"{self.get_timestamp_str()}[BROADCAST] Sent to {broadcast_addr}:{LSNP_PORT}")
+                            self.log_message(f"[BROADCAST] To {broadcast_addr}:{LSNP_PORT}", message)
                     except Exception as e:
                         if self.verbose:
                             print(f"{self.get_timestamp_str()}[WARN] Broadcast failed: {e}")
                 else:
                     # Get our local IP for better self-detection
                     try:
-                        temp_socket = socket(AF_INET, SOCK_DGRAM)
+                        temp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                         temp_socket.connect(("8.8.8.8", 80))
                         local_ip = temp_socket.getsockname()[0]
                         temp_socket.close()
@@ -116,10 +128,7 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                         print(f"[SEND] From {local_send_ip}:{local_send_port} To {target_ip}:{target_port}")
 
                         if self.verbose:
-                            print(f"{self.get_timestamp_str()}[SEND] To {target_ip}:{target_port} -> {lsnp_message}")
-                    elif self.verbose:
-                        print(f"{self.get_timestamp_str()}Skipping unicast to self: {target_ip}:{target_port}")
-
+                            self.log_message(f"[SEND] To {target_ip}:{target_port}", message)
         except Exception as e:
             if self.verbose:
                 print(f"{self.get_timestamp_str()}[ERROR] Failed to send message: {e}")
@@ -150,15 +159,13 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
         return message_dict
 
     def receive_message(self):
-        if self.verbose:
-            print(f"{self.get_timestamp_str()}RECEIVED!!!")
         try:
             data, addr = self.serverSocket.recvfrom(4096) # addr = ip, port
             raw_message = data.decode()
             message = self._lsnp_to_dict(raw_message)
 
             if self.verbose:
-                print(f"{self.get_timestamp_str()}[RECEIVED] From {addr} -> {message}")
+                self.log_message(f"[RECEIVED] From {addr}", message)
 
             # Get the correct listening port from the message
             listening_port = message.get("LISTEN_PORT", LSNP_PORT)  # Use standard port as fallback
@@ -166,7 +173,7 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
             # Get our local IP to avoid adding ourselves as a client
             try:
                 # Get our actual IP address
-                temp_socket = socket(AF_INET, SOCK_DGRAM)
+                temp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 temp_socket.connect(("8.8.8.8", 80))
                 local_ip = temp_socket.getsockname()[0]
                 temp_socket.close()
@@ -181,14 +188,10 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
             if user_id and our_user_id:
                 # Use USER_ID for self-detection (most reliable)
                 is_self = (user_id == our_user_id)
-                if self.verbose and is_self:
-                    print(f"{self.get_timestamp_str()}Ignoring self message: USER_ID {user_id}")
             else:
                 # Fall back to IP/port detection for messages without USER_ID
                 is_self = (addr[0] == local_ip and int(listening_port) == self.port) or \
                          (addr[0] == "127.0.0.1" and int(listening_port) == self.port)
-                if self.verbose and is_self:
-                    print(f"{self.get_timestamp_str()}Ignoring self message: IP/port {addr[0]}:{listening_port}")
             
             if not is_self:
                 # Add to known clients (set automatically prevents duplicates)
@@ -196,9 +199,7 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                 if client_tuple not in self.known_clients:
                     self.known_clients.add(client_tuple)
                     if self.verbose:
-                        print(f"{self.get_timestamp_str()}Adding NEW client: {addr[0]}:{listening_port}")
-                elif self.verbose:
-                    print(f"{self.get_timestamp_str()}Already known client: {addr[0]}:{listening_port}")
+                        print(f"{self.get_timestamp_str()}[NEW CLIENT] {addr[0]}:{listening_port}")
 
             self.parse_message(message, addr)
 
@@ -206,13 +207,10 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
             print(f"{self.get_timestamp_str()}[ERROR] Failed to receive message: {e}")
 
     def parse_message(self, message, sender_addr):
-        if self.verbose:
-            print(f"{self.get_timestamp_str()}PARSING!!!")
         try:
             msg_type = message.get("TYPE")
             if self.verbose:
-                print(f"{self.get_timestamp_str()}Message type: {msg_type}")
-                print(f"{self.get_timestamp_str()}Full message: {message}")
+                self.log_message(f"[PARSING] Message type: {msg_type}", message)
 
             # Route messages to appropriate systems
             if msg_type in [MSG_PROFILE, MSG_POST, MSG_DM, MSG_PING, MSG_LIKE, MSG_FOLLOW, MSG_UNFOLLOW, MSG_ACK, MSG_REVOKE]:
@@ -220,7 +218,7 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                     self.msg_system.process_incoming_message(message)
                 else:
                     # Fallback if msg_system not set
-                    print(f"{self.get_timestamp_str()}[{msg_type}] {message}")
+                    self.log_message(f"[{msg_type}]", message)
             elif msg_type in [MSG_TICTACTOE_INVITE, MSG_TICTACTOE_ACCEPT, MSG_TICTACTOE_MOVE, MSG_TICTACTOE_RESULT]:
                 # Route to file_game_system for game handling
                 if hasattr(self, 'file_game_system') and self.file_game_system:
@@ -233,11 +231,11 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                     elif msg_type == MSG_TICTACTOE_RESULT:
                         self.file_game_system.handle_game_result(message)
                 else:
-                    print(f"{self.get_timestamp_str()}[GAME] {message}")
+                    self.log_message(f"[GAME]", message)
             elif msg_type in [MSG_GROUP_CREATE, MSG_GROUP_UPDATE, MSG_GROUP_MESSAGE]:
-                print(f"{self.get_timestamp_str()}[GROUP] {message}")
+                self.log_message(f"[GROUP]", message)
             elif msg_type in [MSG_FILE_OFFER, MSG_FILE_CHUNK, MSG_FILE_RECEIVED]:
-                print(f"{self.get_timestamp_str()}[FILE] {message}")
+                self.log_message(f"[FILE]", message)
             elif msg_type == "HELLO":  # HELLO is not in specs, so keep as string
                 hello_data = message.get('DATA', 'Hello message')
                 listen_port = message.get('LISTEN_PORT', LSNP_PORT)
@@ -252,7 +250,7 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                     if self.verbose:
                         print(f"[HELLO] Added {sender_ip}:{listen_port} to known clients")
                 
-                print(f"{self.get_timestamp_str()}[HELLO] {hello_data}")
+                self.log_message(f"[HELLO]", message)
                 
                 # If we have user info, create a peer entry and send PROFILE response
                 if self.msg_system and sender_user_id and sender_display_name:

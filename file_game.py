@@ -20,6 +20,24 @@ class fileGameSystem:
         self.file_chunks = {}   # {file_id: {chunk_index: data}}
         self.active_transfers = {}  # {file_id: transfer_data}
 
+    def log_message(self, category, message, show_full=True):
+        """Log message in the new clean format."""
+        if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose and show_full:
+            from datetime import datetime
+            timestamp = datetime.now().strftime('[%Y-%m-%d %H:%M:%S] ')
+            print(f"\n{timestamp}{category}: {{")
+            # Format the message dictionary nicely
+            for key, value in message.items():
+                if isinstance(value, str):
+                    print(f"\t'{key}': '{value}',")
+                else:
+                    print(f"\t'{key}': {value},")
+            print("}\n")
+        elif hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
+            from datetime import datetime
+            timestamp = datetime.now().strftime('[%Y-%m-%d %H:%M:%S] ')
+            print(f"{timestamp}{category}: {message}")
+
     def offer_file(self, to_user, file_path, description=""):
         """Offer a file to another user."""
         # TODO: Implement file transfer functionality

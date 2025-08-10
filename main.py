@@ -36,11 +36,9 @@ class LSNPClient:
         # Start periodic PROFILE broadcasting
         self.msgSystem.start_ping_broadcast()
 
-        # Send HELLO to user1 if not user1
-        if self.user_id != 'user1@127.0.0.1':
-            self.send_hello("127.0.0.1", LSNP_PORT)
+        # Wait a moment for initial messages to settle
+        time.sleep(1)
 
-        # Start ping broadcaster
         # Start UI
         while True:
             print("\n=== LSNP Client Menu ===")

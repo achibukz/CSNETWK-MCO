@@ -31,6 +31,20 @@ class msgSystem:
             return datetime.datetime.now().strftime('[%Y-%m-%d %H:%M:%S] ')
         return ""
 
+    def log_message(self, category, message, show_full=True):
+        """Log message in the new clean format."""
+        if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose and show_full:
+            print(f"\n{self.get_timestamp_str()}{category}: {{")
+            # Format the message dictionary nicely
+            for key, value in message.items():
+                if isinstance(value, str):
+                    print(f"\t'{key}': '{value}',")
+                else:
+                    print(f"\t'{key}': {value},")
+            print("}\n")
+        elif hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
+            print(f"{self.get_timestamp_str()}{category}: {message}")
+
     def create_profile(self, user_id, display_name, status, avatar_path=None):
         self.user_id = user_id
         self.display_name = display_name
@@ -511,7 +525,7 @@ class msgSystem:
             self.acks_sent += 1  # Increment counter
             
             if self.netSystem.verbose:
-                print(f"{self.get_timestamp_str()} [ACK] Sent ACK for message {message_id} to {from_user}")
+                self.log_message(f"[ACK] Sent ACK for message {message_id} to {from_user}", ack_message)
                 
         except Exception as e:
             if self.netSystem.verbose:
