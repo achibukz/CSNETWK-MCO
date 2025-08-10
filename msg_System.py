@@ -100,7 +100,7 @@ class msgSystem:
         self.netSystem.send_message(message)
 
     def send_post(self, content, ttl=3600):
-        """Send a POST message to all followers only (unicast to each follower)."""
+        """Send a POST message to all followers (unicast) or broadcast if no followers."""
         user_id = self.user_id
         timestamp = int(time.time())
         message_id = f"{random.getrandbits(64):016x}"
@@ -114,17 +114,22 @@ class msgSystem:
             "MESSAGE_ID": message_id,
             "TOKEN": token,
             "TIMESTAMP": timestamp,
-            "BROADCAST": False  # Changed to False since we're doing unicast
+            "BROADCAST": False  # Will be set to True if broadcasting
         }
 
-        # Send to all followers individually (unicast)
+        # Get followers list
         followers_list = self.get_followers_list()
+        
         if not followers_list:
-            print(f"{self.get_timestamp_str()} [POST] No followers to send to. Your post: '{content}'")
-            # Still store our own post locally
+            # No followers - use broadcast so the post still reaches the network
+            print(f"{self.get_timestamp_str()} [POST] No followers - broadcasting to network: '{content}'")
+            message["BROADCAST"] = True
+            self.netSystem.send_message(message)
+            # Store our own post locally
             self.stored_posts.append(message)
             return
 
+        # Send to all followers individually (unicast)
         sent_count = 0
         failed_count = 0
         

@@ -127,10 +127,9 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                     
                     if not is_self:
                         clientSocket.sendto(lsnp_message.encode(), (target_ip, target_port))
-                        local_send_ip, local_send_port = clientSocket.getsockname()
-                        print(f"[SEND] From {local_send_ip}:{local_send_port} To {target_ip}:{target_port}")
-
                         if self.verbose:
+                            local_send_ip, local_send_port = clientSocket.getsockname()
+                            print(f"[SEND] From {local_send_ip}:{local_send_port} To {target_ip}:{target_port}")
                             self.log_message(f"[SEND] To {target_ip}:{target_port}", message)
         except Exception as e:
             if self.verbose:
