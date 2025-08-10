@@ -221,11 +221,13 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                 else:
                     # Fallback if msg_system not set
                     print(f"{self.get_timestamp_str()}[{msg_type}] {message}")
-            elif msg_type in [MSG_TICTACTOE_INVITE, MSG_TICTACTOE_MOVE, MSG_TICTACTOE_RESULT]:
+            elif msg_type in [MSG_TICTACTOE_INVITE, MSG_TICTACTOE_ACCEPT, MSG_TICTACTOE_MOVE, MSG_TICTACTOE_RESULT]:
                 # Route to file_game_system for game handling
                 if hasattr(self, 'file_game_system') and self.file_game_system:
                     if msg_type == MSG_TICTACTOE_INVITE:
                         self.file_game_system.handle_game_invite(message)
+                    elif msg_type == MSG_TICTACTOE_ACCEPT:
+                        self.file_game_system.handle_game_accept(message)
                     elif msg_type == MSG_TICTACTOE_MOVE:
                         self.file_game_system.handle_game_move(message)
                     elif msg_type == MSG_TICTACTOE_RESULT:

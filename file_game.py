@@ -153,6 +153,24 @@ class fileGameSystem:
             'last_move': time.time()
         }
         
+        # Send acceptance message to the inviter
+        timestamp = int(time.time())
+        message_id = f"{random.getrandbits(64):016x}"
+        
+        accept_message = {
+            "TYPE": MSG_TICTACTOE_ACCEPT,
+            "FROM": user_id,
+            "TO": invite['from'],
+            "GAME_ID": game_id,
+            "MESSAGE_ID": message_id,
+            "TIMESTAMP": str(timestamp),
+            "TOKEN": f"{user_id}|{timestamp + 3600}|{SCOPE_GAME}"
+        }
+        
+        # Send the acceptance message
+        self.netSystem.send_message(accept_message)
+        print(f"📤 Sent game acceptance to {invite['from']}")
+        
         # Remove from invites
         del self.game_invites[game_id]
         
@@ -386,6 +404,63 @@ class fileGameSystem:
         print(f"Game ID: {game_id}")
         print(f"Your symbol will be: {'O' if symbol == 'X' else 'X'}")
         print(f"To accept, use menu option to accept game {game_id}")
+        
+        # Send ACK
+        if message.get('MESSAGE_ID'):
+            self.send_ack(message)
+
+    def handle_game_accept(self, message):
+        """Handle incoming game acceptance."""
+        game_id = message.get('GAME_ID')
+        from_user = message.get('FROM')
+        
+        if not all([game_id, from_user]):
+            print("❌ Invalid game acceptance message")
+            return
+        
+        # Check if we have this invitation pending (we should be the original inviter)
+        user_id = getattr(self.netSystem.msg_system, 'user_id', 'unknown@127.0.0.1')
+        
+        # Create the game on the inviter's side
+        if game_id in self.game_invites:
+            invite = self.game_invites[game_id]
+            our_symbol = invite['symbol']
+            their_symbol = "O" if our_symbol == "X" else "X"
+            
+            # Initialize game state
+            self.active_games[game_id] = {
+                'board': [" " for _ in range(9)],
+                'players': {
+                    user_id: our_symbol,
+                    from_user: their_symbol
+                },
+                'current_turn': "X",  # X always goes first
+                'turn_number': 1,
+                'status': 'active',
+                'created': time.time(),
+                'last_move': time.time()
+            }
+            
+            # Remove the invitation
+            del self.game_invites[game_id]
+            
+            # Get display name
+            display_name = from_user
+            if hasattr(self.netSystem, 'msg_system') and self.netSystem.msg_system:
+                display_name = self.netSystem.msg_system.get_display_name(from_user)
+            
+            print(f"\n🎉 {display_name} accepted your game invitation!")
+            print(f"🎮 Game {game_id} started! You are {our_symbol}.")
+            
+            if our_symbol == "X":
+                print("It's your turn! Choose your move (position 0-8):")
+                self.display_game_board(game_id)
+                print("0 | 1 | 2")
+                print("3 | 4 | 5")
+                print("6 | 7 | 8")
+            else:
+                print(f"Waiting for {display_name} to move...")
+                self.display_game_board(game_id)
         
         # Send ACK
         if message.get('MESSAGE_ID'):
