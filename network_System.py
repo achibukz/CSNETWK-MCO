@@ -71,7 +71,7 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
         thread = threading.Thread(target=self.setup_socket, daemon=True)
         thread.start()
 
-    def send_message(self, message, target_ip=LSNP_PORT, target_port=LSNP_PORT):  # None for broadcast
+    def send_message(self, message, target_ip=None, target_port=LSNP_PORT):  # None for broadcast
         """Send an LSNP message via UDP to a target IP and port or everybody (if broadcast)."""
         try:
             # Convert to LSNP format (key-value pairs with \n\n terminator)
@@ -112,6 +112,12 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                         if self.verbose:
                             print(f"{self.get_timestamp_str()}[WARN] Broadcast failed: {e}")
                 else:
+                    # Check if target_ip is provided
+                    if target_ip is None:
+                        if self.verbose:
+                            print(f"{self.get_timestamp_str()}[ERROR] Target IP not specified for unicast message")
+                        return
+                    
                     # Get our local IP for better self-detection
                     try:
                         temp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

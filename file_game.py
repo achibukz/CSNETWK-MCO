@@ -307,8 +307,11 @@ class fileGameSystem:
             'message_id': message_id
         }
         
+        # Extract target IP from to_user (format: name@ip)
+        target_ip = to_user.split('@')[-1] if '@' in to_user else "127.0.0.1"
+        
         # Send invitation
-        self.netSystem.send_message(invite_message)
+        self.netSystem.send_message(invite_message, target_ip=target_ip, target_port=LSNP_PORT)
         
         # Add to pending ACKs if msg_system exists
         if hasattr(self.netSystem, 'msg_system') and self.netSystem.msg_system:
@@ -363,8 +366,11 @@ class fileGameSystem:
             "TOKEN": f"{user_id}|{timestamp + 3600}|{SCOPE_GAME}"
         }
         
+        # Extract target IP from to_user (format: name@ip)
+        target_ip = invite['from'].split('@')[-1] if '@' in invite['from'] else "127.0.0.1"
+        
         # Send the acceptance message
-        self.netSystem.send_message(accept_message)
+        self.netSystem.send_message(accept_message, target_ip=target_ip, target_port=LSNP_PORT)
         print(f"📤 Sent game acceptance to {invite['from']}")
         
         # Remove from invites
@@ -442,8 +448,11 @@ class fileGameSystem:
             "TOKEN": f"{user_id}|{timestamp + 3600}|{SCOPE_GAME}"
         }
         
+        # Extract target IP from opponent (format: name@ip)
+        target_ip = opponent.split('@')[-1] if '@' in opponent else "127.0.0.1"
+        
         # Send move
-        self.netSystem.send_message(move_message)
+        self.netSystem.send_message(move_message, target_ip=target_ip, target_port=LSNP_PORT)
         
         # Add to pending ACKs
         if hasattr(self.netSystem, 'msg_system') and self.netSystem.msg_system:
@@ -811,7 +820,10 @@ class fileGameSystem:
         if result_info['winning_line']:
             result_message["WINNING_LINE"] = ','.join(map(str, result_info['winning_line']))
         
-        self.netSystem.send_message(result_message)
+        # Extract target IP from opponent (format: name@ip)
+        target_ip = opponent.split('@')[-1] if '@' in opponent else "127.0.0.1"
+        
+        self.netSystem.send_message(result_message, target_ip=target_ip, target_port=LSNP_PORT)
     
     def display_game_result(self, game_id, result_info):
         """Display the final game result."""
