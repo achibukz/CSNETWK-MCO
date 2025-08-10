@@ -283,7 +283,6 @@ class msgSystem:
     def process_incoming_message(self, message):
         """Process incoming messages and store valid ones."""
         msg_type = message.get("TYPE")
-        print(f"[DEBUG] Processing message type: '{msg_type}'")
         
         if msg_type == MSG_PROFILE:
             self.handle_profile_message(message)
@@ -304,14 +303,11 @@ class msgSystem:
         elif msg_type == MSG_REVOKE:
             self.handle_revoke_message(message)
         elif msg_type == MSG_GROUP_CREATE:
-            print(f"[DEBUG] Calling handle_group_create_message for: {msg_type}")
             self.handle_group_create_message(message)
         elif msg_type == MSG_GROUP_UPDATE:
             self.handle_group_update_message(message)
         elif msg_type == MSG_GROUP_MESSAGE:
             self.handle_group_message(message)
-        else:
-            print(f"[DEBUG] Unknown message type: '{msg_type}'")
         
         # Send ACK for messages that require acknowledgment
         if msg_type in [MSG_DM, MSG_FOLLOW, MSG_UNFOLLOW, MSG_LIKE, MSG_GROUP_CREATE, MSG_GROUP_UPDATE, MSG_GROUP_MESSAGE] and message.get("MESSAGE_ID"):
@@ -724,7 +720,7 @@ class msgSystem:
             try:
                 # Resolve target IP from user ID
                 target_user_id = ack_info['target_user']
-                ip_address = self.resolve_user_to_ip(target_user_id)
+                ip_address = target_user_id.rsplit('@', 1)[1] if '@' in target_user_id else "127.0.0.1"
                 target_port = 50999  # Default LSNP port
                 
                 # Check if we have a known port for this IP
@@ -1219,8 +1215,6 @@ class msgSystem:
         token = message.get("TOKEN")
         message_id = message.get("MESSAGE_ID")
         
-        print(f"[DEBUG] Processing GROUP_CREATE: {group_id} from {from_user}")
-        
         # Check for duplicate messages
         if message_id and message_id in self.processed_messages:
             if self.netSystem.verbose:
@@ -1229,22 +1223,13 @@ class msgSystem:
         
         # Validate token
         if not token or not self.validate_enhanced_token(token, SCOPE_GROUP, message_type="GROUP_CREATE"):
-            print(f"[DEBUG] Invalid token for GROUP_CREATE from {from_user}")
             return
         
         # Check if we're in the members list
         members = [m.strip() for m in members_str.split(",") if m.strip()]
-        print(f"[DEBUG] Group members: {members}")
-        print(f"[DEBUG] My user_id: '{self.user_id}'")
-        print(f"[DEBUG] Checking membership...")
-        for i, member in enumerate(members):
-            print(f"[DEBUG]   Member {i}: '{member}' == '{self.user_id}' ? {member == self.user_id}")
         
         if self.user_id not in members:
-            print(f"[DEBUG] ❌ Not a member of group {group_id} - user_id mismatch!")
             return
-        
-        print(f"[DEBUG] ✅ Confirmed as member of group {group_id}")
         
         # Mark message as processed
         if message_id:
@@ -1401,23 +1386,13 @@ class msgSystem:
     def send_message_to_user(self, message, target_user):
         """Send a message to a specific user via unicast."""
         try:
-            # Extract IP and port from user_id format: user@ip:port
-            if '@' in target_user:
-                user_part, addr_part = target_user.split('@', 1)
-                if ':' in addr_part:
-                    target_ip, port_str = addr_part.split(':', 1)
-                    target_port = int(port_str)
-                else:
-                    target_ip = addr_part
-                    target_port = LSNP_PORT  # fallback to broadcast port
-            else:
-                target_ip = "127.0.0.1"
-                target_port = LSNP_PORT
+            # Extract IP from user_id
+            target_ip = target_user.split('@')[-1] if '@' in target_user else "127.0.0.1"
             
             if self.netSystem.verbose:
-                print(f"[DEBUG] Sending {message.get('TYPE')} message to {target_user} at {target_ip}:{target_port}")
+                print(f"[DEBUG] Sending {message.get('TYPE')} message to {target_user} at {target_ip}")
             
-            self.netSystem.send_message(message, target_ip=target_ip, target_port=target_port)
+            self.netSystem.send_message(message, target_ip=target_ip, target_port=LSNP_PORT)
         except Exception as e:
             if self.netSystem.verbose:
                 print(f"[ERROR] Failed to send message to {target_user}: {e}")

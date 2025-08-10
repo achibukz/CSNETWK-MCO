@@ -488,19 +488,26 @@ class fileGameSystem:
         while game_id in self.active_games or game_id in self.game_invites:
             game_id = f"g{random.randint(0, 255)}"
         
-        # Get user info
-        user_id = getattr(self.netSystem.msg_system, 'user_id', 'unknown@127.0.0.1')
+        # Get user info - try multiple ways to get user_id
+        user_id = None
+        if hasattr(self.netSystem, 'msg_system') and self.netSystem.msg_system:
+            user_id = getattr(self.netSystem.msg_system, 'user_id', None)
+        
+        if not user_id:
+            print(f"[ERROR] Game invite: Cannot determine user_id from message system")
+            return None
+        
         timestamp = int(time.time())
         message_id = f"{random.getrandbits(64):016x}"
         
         # Create game invite
         invite_message = {
-            "TYPE": MSG_TICTACTOE_INVITE,
-            "FROM": user_id,
-            "TO": to_user,
-            "GAMEID": game_id,
-            "MESSAGE_ID": message_id,
-            "SYMBOL": symbol,
+            "TYPE": str(MSG_TICTACTOE_INVITE),
+            "FROM": str(user_id),
+            "TO": str(to_user),
+            "GAMEID": str(game_id),
+            "MESSAGE_ID": str(message_id),
+            "SYMBOL": str(symbol),
             "TIMESTAMP": str(timestamp),  # Convert to string for LSNP
             "TOKEN": f"{user_id}|{timestamp + 3600}|{SCOPE_GAME}"
         }
