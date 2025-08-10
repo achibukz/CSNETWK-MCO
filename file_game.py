@@ -1,27 +1,34 @@
 # Member 3
 
+import mimetypes
 import time
 import random
 import base64
 import os
 import uuid
-import mimetypes
 from vars import *
-
 class fileGameSystem:
     def __init__(self, netSystem):
         self.netSystem = netSystem
+        self.user_id = getattr(self.netSystem.msg_system, 'user_id', 'unknown@127.0.0.1')
         
         # Game state management
         self.active_games = {}  # {game_id: game_data}
         self.game_invites = {}  # {game_id: invite_data}
         self.pending_moves = {}  # {message_id: move_data} for retries
-        self.processed_messages = {}  # {message_id: timestamp} for deduplication
         
         # File transfer management
-        self.file_offers = {}   # {file_id: offer_data}
-        self.file_chunks = {}   # {file_id: {chunk_index: data}}
-        self.active_transfers = {}  # {file_id: transfer_data}
+        self.pending_file_offers = {}   # {file_id: offer_data}
+        self.incoming_files = {}        # {file_id: {chunks, metadata}}
+        self.outgoing_files = {}        # {file_id: file_info}
+
+    def get_timestamp_str(self):
+        """Get formatted timestamp string for logging."""
+        # Only show timestamps in verbose mode
+        if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
+            import datetime
+            return datetime.datetime.now().strftime('[%Y-%m-%d %H:%M:%S] ')
+        return ''
 
     def log_message(self, category, message, show_full=True):
         """Log message in the new clean format."""
@@ -41,220 +48,366 @@ class fileGameSystem:
             timestamp = datetime.now().strftime('[%Y-%m-%d %H:%M:%S] ')
             print(f"{timestamp}{category}: {message}")
 
-    def offer_file(self, to_user, file_path, description=""):
-        """Offer a file to another user."""
-        # TODO: Implement file transfer functionality
-        file_name = os.path.basename(file_path)
-        file_size = os.path.getsize(file_path)
-        file_id = str(uuid.uuid4())[:8]  # Shorten for readability, or use as is
-        file_type, _ = mimetypes.guess_type(file_path)
-        timestamp = self.get_timestamp_str()
-        if not file_type:
-            file_type = "application/octet-stream"
-        ttl = 3600  # 1 hour default, adjust as needed
-        token_expiry = timestamp + ttl
-
-        # Step 2: Lookup target IP and port
-        peer_info = self.netSystem.msg_system.known_peers.get(to_user)
-        if not peer_info:
-            print(f"User {to_user} not found in known peers.")
-            return None
-        target_ip = peer_info.get('ip')
-        target_port = peer_info.get('port', LSNP_PORT)
-
-        # Step 4: Create token
-        token = f"{self.user_id}|{timestamp + 3600}|{SCOPE_FILE}"
-
-        # Step 5: Create offer message (keys must match spec)
-        offer_message = {
+    # ===============================
+    # FILE TRANSFER METHODS (LSNP COMPLIANT)
+    # ===============================
+    
+    def send_file(self, to_user, file_path, description=""):
+        """Send a file offer to another user according to LSNP specs."""
+        # Generate file metadata
+        file_id = str(uuid.uuid4())[:8]  # 8-character file ID
+        filename = os.path.basename(file_path)
+        filesize = os.path.getsize(file_path)
+        filetype, _ = mimetypes.guess_type(file_path)
+        if not filetype:
+            filetype = "application/octet-stream"
+        
+        timestamp = int(time.time())
+        ttl = 3600  # 1 hour TTL
+        token = f"{self.user_id}|{timestamp + ttl}|{SCOPE_FILE}"
+        
+        # Create FILE_OFFER message according to LSNP specs
+        file_offer_message = {
             "TYPE": MSG_FILE_OFFER,
             "FROM": self.user_id,
             "TO": to_user,
-            "FILENAME": file_name,
-            "FILESIZE": file_size,
-            "FILETYPE": file_type,
+            "FILENAME": filename,
+            "FILESIZE": str(filesize),  # String as per specs
+            "FILETYPE": filetype,
             "FILEID": file_id,
             "DESCRIPTION": description,
-            "TIMESTAMP": 0, # Placeholder for actual timestamp
+            "TIMESTAMP": str(timestamp),  # String as per specs
             "TOKEN": token
         }
-
-        # Step 6: Send offer to recipient
-        self.netSystem.send_message(offer_message, target_ip=target_ip, target_port=target_port)
-
-        # Step 7: Store offer locally
-        self.file_offers[file_id] = {
-            "to_user": to_user,
+        
+        # Store outgoing file info
+        self.outgoing_files[file_id] = {
             "file_path": file_path,
+            "to_user": to_user,
+            "filename": filename,
+            "filesize": filesize,
+            "filetype": filetype,
             "description": description,
-            "status": "OFFERED"
+            "status": "OFFERED",
+            "timestamp": timestamp,
+            "chunks_sent": 0,
+            "total_chunks": 0
         }
-
+        
+        # Send the offer
+        self.netSystem.send_message(file_offer_message)
+        
+        if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
+            print(f"[FILE] Sent file offer for {filename} to {to_user} (ID: {file_id})")
+        
+        # Start sending chunks after a short delay to allow receiver to be ready
+        # This is a simplified approach - in a real implementation, you might want
+        # explicit acceptance before sending chunks
+        import threading
+        def delayed_send():
+            time.sleep(2)  # Give receiver time to accept
+            self.send_file_chunks(file_id)
+        
+        thread = threading.Thread(target=delayed_send, daemon=True)
+        thread.start()
+        
         return file_id
-
+    
     def handle_file_offer(self, message):
-        """Handle incoming FILE_OFFER messages."""
+        """Handle incoming FILE_OFFER message according to LSNP specs."""
         file_id = message.get("FILEID")
         from_user = message.get("FROM")
         filename = message.get("FILENAME")
         filesize = message.get("FILESIZE")
+        filetype = message.get("FILETYPE")
         description = message.get("DESCRIPTION", "")
-        timestamp = message.get("TIMESTAMP")
-        token = message.get("TOKEN")
-
-        # Store the offer locally for user action (accept/reject)
-        self.file_offers[file_id] = {
+        
+        # Store the pending offer
+        self.pending_file_offers[file_id] = {
             "from_user": from_user,
             "filename": filename,
-            "filesize": filesize,
+            "filesize": int(filesize) if filesize else 0,
+            "filetype": filetype,
             "description": description,
-            "timestamp": timestamp,
-            "token": token,
+            "timestamp": message.get("TIMESTAMP"),
+            "token": message.get("TOKEN"),
             "status": "PENDING"
         }
-
-        # Notify the user
-        display_name = self.get_display_name(from_user)
-        print(f"{self.get_timestamp_str()} [FILE OFFER] {display_name} wants to send you '{filename}' ({filesize} bytes): {description}")
-        print(f"Use accept_file_offer('{file_id}', '{from_user}') to accept.")
-
-    def accept_file_offer(self, file_id, from_user):
-        """Accept a pending file offer and notify the sender."""
-        # Check if the offer exists and is pending
-        offer = getattr(self, "pending_file_offers", {}).get(file_id)
-        if not offer or offer.get("status") != "PENDING":
-            print(f"[FILE] No pending offer with ID {file_id}.")
+        
+        # Get display name
+        display_name = from_user
+        if hasattr(self.netSystem, 'msg_system') and self.netSystem.msg_system:
+            display_name = self.netSystem.msg_system.get_display_name(from_user)
+        
+        # Non-verbose printing as per specs: "User alice is sending you a file do you accept?"
+        print(f"User {display_name} is sending you a file do you accept?")
+        
+        # Verbose mode additional info
+        if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
+            print(f"[FILE] Received file offer:")
+            print(f"  - From: {display_name} ({from_user})")
+            print(f"  - File: {filename}")
+            print(f"  - Size: {filesize} bytes")
+            print(f"  - Type: {filetype}")
+            print(f"  - Description: {description}")
+            print(f"  - File ID: {file_id}")
+    
+    def accept_file_offer(self, file_id):
+        """Accept a file offer and prepare to receive chunks."""
+        if file_id not in self.pending_file_offers:
+            print(f"No pending file offer with ID: {file_id}")
             return False
-
-        # Prepare FILE_ACCEPT message
-        timestamp = int(time.time())
-        token = f"{self.user_id}|{timestamp + 3600}|{SCOPE_FILE}"
-
-        message = {
-            "TYPE": "FILE_ACCEPT",
-            "FILEID": file_id,
-            "FROM": self.user_id,
-            "TO": from_user,
-            "TIMESTAMP": timestamp,
-            "TOKEN": token
-        }
-
-        # Extract IP and port from from_user (user_id format: name@ip)
-        ip_address = from_user.rsplit('@', 1)[1] if '@' in from_user else "127.0.0.1"
-        target_port = LSNP_PORT
-        for known_ip, known_port in self.netSystem.known_clients:
-            if known_ip == ip_address:
-                target_port = known_port
-                break
-
-        # Send FILE_ACCEPT message
-        self.netSystem.send_message(message, target_ip=ip_address, target_port=target_port)
-
-        # Update offer status
+        
+        offer = self.pending_file_offers[file_id]
         offer["status"] = "ACCEPTED"
-        print(f"[FILE] Accepted file offer {file_id} from {from_user}.")
+        
+        # Initialize incoming file tracking
+        self.incoming_files[file_id] = {
+            "filename": offer["filename"],
+            "filesize": offer["filesize"],
+            "filetype": offer["filetype"],
+            "from_user": offer["from_user"],
+            "chunks": {},
+            "total_chunks": 0,
+            "received_chunks": 0
+        }
+        
+        if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
+            print(f"[FILE] Accepted file offer {file_id} ({offer['filename']}) from {offer['from_user']}")
+        
+        # According to LSNP specs, there's no FILE_ACCEPT message
+        # The receiver just starts accepting chunks when they arrive
         return True
     
-    def handle_file_accept(self, message):
-        file_id = message.get("FILEID")
-        offer = self.file_offers.get(file_id)
-        if not offer:
-            print(f"[FILE] No offer found for file_id {file_id}")
-            return
-
-        file_path = offer.get("file_path")
-        if not file_path or not os.path.exists(file_path):
-            print(f"[FILE] File not found: {file_path}")
-            return
-
-        # Read and send file in chunks
-        chunk_size = 4096
+    def reject_file_offer(self, file_id):
+        """Reject a file offer."""
+        if file_id not in self.pending_file_offers:
+            print(f"No pending file offer with ID: {file_id}")
+            return False
+        
+        offer = self.pending_file_offers[file_id]
+        del self.pending_file_offers[file_id]
+        
+        if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
+            print(f"[FILE] Rejected file offer {file_id} ({offer['filename']}) from {offer['from_user']}")
+        
+        return True
+    
+    def send_file_chunks(self, file_id):
+        """Send file in chunks after offer is accepted."""
+        if file_id not in self.outgoing_files:
+            print(f"No outgoing file with ID: {file_id}")
+            return False
+        
+        file_info = self.outgoing_files[file_id]
+        file_path = file_info["file_path"]
+        to_user = file_info["to_user"]
+        
+        if not os.path.exists(file_path):
+            print(f"File not found: {file_path}")
+            return False
+        
+        # Read file and split into chunks
+        chunk_size = 1024  # 1KB chunks (can be adjusted)
+        filesize = file_info["filesize"]
+        total_chunks = (filesize + chunk_size - 1) // chunk_size
+        
+        file_info["total_chunks"] = total_chunks
+        
+        timestamp = int(time.time())
+        ttl = 3600
+        token = f"{self.user_id}|{timestamp + ttl}|{SCOPE_FILE}"
+        
         with open(file_path, "rb") as f:
-            chunk_index = 0
-            while True:
-                data = f.read(chunk_size)
-                if not data:
+            for chunk_index in range(total_chunks):
+                chunk_data = f.read(chunk_size)
+                if not chunk_data:
                     break
-                self.send_file_chunk(file_id, chunk_index, data)
-                chunk_index += 1
-        print(f"[FILE] Finished sending file {file_id}")
-
-    def send_file_chunk(self, file_id, chunk_index, data):
-        """Send a file chunk to the recipient."""
-        offer = self.file_offers.get(file_id)
-        if not offer:
-            print(f"[FILE] No offer found for file_id {file_id}")
+                
+                # Encode chunk data in base64
+                encoded_data = base64.b64encode(chunk_data).decode('ascii')
+                
+                # Create FILE_CHUNK message according to LSNP specs
+                chunk_message = {
+                    "TYPE": MSG_FILE_CHUNK,
+                    "FROM": self.user_id,
+                    "TO": to_user,
+                    "FILEID": file_id,
+                    "CHUNK_INDEX": str(chunk_index),  # String as per specs
+                    "TOTAL_CHUNKS": str(total_chunks),  # String as per specs
+                    "CHUNK_SIZE": str(len(chunk_data)),  # String as per specs
+                    "TOKEN": token,
+                    "DATA": encoded_data
+                }
+                
+                # Send the chunk
+                self.netSystem.send_message(chunk_message)
+                file_info["chunks_sent"] += 1
+                
+                # Small delay to prevent overwhelming the network
+                time.sleep(0.01)
+        
+        file_info["status"] = "SENT"
+        
+        if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
+            print(f"[FILE] Sent {total_chunks} chunks for file {file_id} to {to_user}")
+        
+        return True
+    
+    def handle_file_chunk(self, message):
+        """Handle incoming FILE_CHUNK message according to LSNP specs."""
+        file_id = message.get("FILEID")
+        chunk_index = int(message.get("CHUNK_INDEX", 0))
+        total_chunks = int(message.get("TOTAL_CHUNKS", 0))
+        chunk_size = int(message.get("CHUNK_SIZE", 0))
+        encoded_data = message.get("DATA", "")
+        
+        # Check if we have accepted this file
+        if file_id not in self.incoming_files:
+            # File not accepted, ignore chunks as per specs
+            if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
+                print(f"[FILE] Ignoring chunk for unaccepted file {file_id}")
+            return
+        
+        file_info = self.incoming_files[file_id]
+        
+        # Decode chunk data
+        try:
+            chunk_data = base64.b64decode(encoded_data)
+        except Exception as e:
+            if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
+                print(f"[FILE] Failed to decode chunk {chunk_index} for file {file_id}: {e}")
+            return
+        
+        # Store chunk
+        file_info["chunks"][chunk_index] = chunk_data
+        file_info["total_chunks"] = total_chunks
+        file_info["received_chunks"] = len(file_info["chunks"])
+        
+        if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
+            print(f"[FILE] Received chunk {chunk_index}/{total_chunks-1} for {file_info['filename']}")
+        
+        # Check if all chunks are received
+        if file_info["received_chunks"] == total_chunks:
+            self.reconstruct_file(file_id)
+    
+    def reconstruct_file(self, file_id):
+        """Reconstruct file from received chunks."""
+        if file_id not in self.incoming_files:
             return False
-
-        to_user = offer.get("to_user")
-        peer_info = self.netSystem.msg_system.known_peers.get(to_user)
-        if not peer_info:
-            print(f"[FILE] Recipient {to_user} not found in known peers.")
+        
+        file_info = self.incoming_files[file_id]
+        filename = file_info["filename"]
+        total_chunks = file_info["total_chunks"]
+        chunks = file_info["chunks"]
+        from_user = file_info["from_user"]
+        
+        # Check if all chunks are present
+        missing_chunks = [i for i in range(total_chunks) if i not in chunks]
+        if missing_chunks:
+            if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
+                print(f"[FILE] Missing chunks for {filename}: {missing_chunks}")
             return False
-
-        target_ip = peer_info.get('ip')
-        target_port = peer_info.get('port', LSNP_PORT)
-
-        # Encode data as base64 for safe transmission
-        encoded_data = base64.b64encode(data).decode('ascii')
-
-        chunk_message = {
-            "TYPE": MSG_FILE_CHUNK,
+        
+        # Create downloads directory if it doesn't exist
+        downloads_dir = "downloads"
+        os.makedirs(downloads_dir, exist_ok=True)
+        
+        # Reconstruct file
+        output_path = os.path.join(downloads_dir, filename)
+        try:
+            with open(output_path, "wb") as f:
+                for i in range(total_chunks):
+                    f.write(chunks[i])
+            
+            # Non-verbose printing as per specs: "File transfer of filename is complete"
+            print(f"File transfer of {filename} is complete")
+            
+            # Verbose mode additional info
+            if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
+                print(f"[FILE] File saved to: {output_path}")
+            
+            # Send FILE_RECEIVED confirmation
+            self.send_file_received(file_id, from_user, "COMPLETE")
+            
+            # Clean up
+            del self.incoming_files[file_id]
+            if file_id in self.pending_file_offers:
+                del self.pending_file_offers[file_id]
+            
+            return True
+            
+        except Exception as e:
+            if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
+                print(f"[FILE] Failed to reconstruct file {filename}: {e}")
+            return False
+    
+    def send_file_received(self, file_id, to_user, status):
+        """Send FILE_RECEIVED confirmation according to LSNP specs."""
+        timestamp = int(time.time())
+        
+        # Create FILE_RECEIVED message according to LSNP specs
+        received_message = {
+            "TYPE": MSG_FILE_RECEIVED,
             "FROM": self.user_id,
             "TO": to_user,
             "FILEID": file_id,
-            "CHUNK_INDEX": chunk_index,
-            "DATA": encoded_data,
-            "TIMESTAMP": int(time.time()),
-            "TOKEN": f"{self.user_id}|{int(time.time()) + 3600}|{SCOPE_FILE}"
+            "STATUS": status,
+            "TIMESTAMP": str(timestamp)  # String as per specs
         }
-
-        self.netSystem.send_message(chunk_message, target_ip=target_ip, target_port=target_port)
-        print(f"[FILE] Sent chunk {chunk_index} of file {file_id} to {to_user}")
-        return True
-
-    def receive_file_chunk(self, message):
-        """Receive a file chunk and store it."""
+        
+        # Send the confirmation
+        self.netSystem.send_message(received_message)
+        
+        # No printing for FILE_RECEIVED as per specs
+        if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
+            print(f"[FILE] Sent FILE_RECEIVED confirmation for {file_id} to {to_user}")
+    
+    def handle_file_received(self, message):
+        """Handle incoming FILE_RECEIVED confirmation."""
         file_id = message.get("FILEID")
-        chunk_index = message.get("CHUNK_INDEX")
-        encoded_data = message.get("DATA")
-
-        if file_id is None or chunk_index is None or encoded_data is None:
-            print("[FILE] Invalid file chunk message received.")
-            return False
-
-        try:
-            chunk_index = int(chunk_index)
-            data = base64.b64decode(encoded_data)
-        except Exception as e:
-            print(f"[FILE] Error decoding chunk: {e}")
-            return False
-
-        # Store chunk
-        if file_id not in self.file_chunks:
-            self.file_chunks[file_id] = {}
-        self.file_chunks[file_id][chunk_index] = data
-
-        print(f"[FILE] Received chunk {chunk_index} for file {file_id}")
-
-        # Optionally, check if all chunks are received and reconstruct file here
-
-        return True
-
-    def reconstruct_file(self, file_id):
-        """Reconstruct a file from chunks."""
-        # TODO: Implement file transfer functionality
-        pass
-
-    def send_file_received(self, file_id, to_user, status="COMPLETE"):
-        """Send file received confirmation."""
-        # TODO: Implement file transfer functionality
-        pass
-
+        status = message.get("STATUS")
+        from_user = message.get("FROM")
+        
+        if file_id in self.outgoing_files:
+            self.outgoing_files[file_id]["status"] = f"RECEIVED_{status}"
+            
+            # No printing for FILE_RECEIVED as per specs
+            if hasattr(self.netSystem, 'verbose') and self.netSystem.verbose:
+                filename = self.outgoing_files[file_id]["filename"]
+                print(f"[FILE] {from_user} confirmed receipt of {filename} with status: {status}")
+    
+    def get_pending_file_offers(self):
+        """Get list of pending file offers."""
+        return self.pending_file_offers.copy()
+    
     def get_file_transfers(self):
-        """Get list of active file transfers."""
-        # TODO: Implement file transfer functionality
-        return []
+        """Get status of ongoing file transfers."""
+        transfers = []
+        
+        # Outgoing files
+        for file_id, info in self.outgoing_files.items():
+            transfers.append({
+                "file_id": file_id,
+                "direction": "outgoing",
+                "filename": info["filename"],
+                "to_user": info["to_user"],
+                "status": info["status"],
+                "progress": f"{info['chunks_sent']}/{info['total_chunks']}" if info['total_chunks'] > 0 else "0/0"
+            })
+        
+        # Incoming files
+        for file_id, info in self.incoming_files.items():
+            transfers.append({
+                "file_id": file_id,
+                "direction": "incoming", 
+                "filename": info["filename"],
+                "from_user": info["from_user"],
+                "status": "receiving",
+                "progress": f"{info['received_chunks']}/{info['total_chunks']}" if info['total_chunks'] > 0 else "0/0"
+            })
+        
+        return transfers
 
     def retry_game_move(self, game_id, position, max_retries=3):
         """Retry a game move if it fails."""
@@ -310,11 +463,8 @@ class fileGameSystem:
             'message_id': message_id
         }
         
-        # Extract target IP from to_user (format: name@ip)
-        target_ip = to_user.split('@')[-1] if '@' in to_user else "127.0.0.1"
-        
         # Send invitation
-        self.netSystem.send_message(invite_message, target_ip=target_ip, target_port=LSNP_PORT)
+        self.netSystem.send_message(invite_message)
         
         # Add to pending ACKs if msg_system exists
         if hasattr(self.netSystem, 'msg_system') and self.netSystem.msg_system:
@@ -369,11 +519,8 @@ class fileGameSystem:
             "TOKEN": f"{user_id}|{timestamp + 3600}|{SCOPE_GAME}"
         }
         
-        # Extract target IP from to_user (format: name@ip)
-        target_ip = invite['from'].split('@')[-1] if '@' in invite['from'] else "127.0.0.1"
-        
         # Send the acceptance message
-        self.netSystem.send_message(accept_message, target_ip=target_ip, target_port=LSNP_PORT)
+        self.netSystem.send_message(accept_message)
         print(f"📤 Sent game acceptance to {invite['from']}")
         
         # Remove from invites
@@ -451,11 +598,8 @@ class fileGameSystem:
             "TOKEN": f"{user_id}|{timestamp + 3600}|{SCOPE_GAME}"
         }
         
-        # Extract target IP from opponent (format: name@ip)
-        target_ip = opponent.split('@')[-1] if '@' in opponent else "127.0.0.1"
-        
         # Send move
-        self.netSystem.send_message(move_message, target_ip=target_ip, target_port=LSNP_PORT)
+        self.netSystem.send_message(move_message)
         
         # Add to pending ACKs
         if hasattr(self.netSystem, 'msg_system') and self.netSystem.msg_system:
@@ -701,30 +845,16 @@ class fileGameSystem:
         
         game = self.active_games[game_id]
         
-        # Check for duplicate message IDs FIRST
-        message_id = message.get('MESSAGE_ID')
-        if message_id and message_id in self.processed_messages:
-            print(f"⚠️ Duplicate message {message_id} already processed, ignoring")
-            self.send_ack(message)
-            return
-        
-        # Check if game is already finished
-        if game['status'] != 'active':
-            print(f"⚠️ Move received for finished game {game_id}, ignoring")
-            if message.get('MESSAGE_ID'):
-                self.send_ack(message)
-            return
-        
-        # Check for duplicate moves FIRST (idempotency)
-        if self.handle_duplicate_move(game_id, turn):
-            print(f"⚠️ Duplicate move detected for turn {turn}, ignoring")
-            if message.get('MESSAGE_ID'): 
-                self.send_ack(message)
-            return
-        
         # Validate the move
         if not self.validate_move(game_id, position, symbol, turn):
             print(f"❌ Invalid move received: position {position}")
+            return
+        
+        # Check for duplicate moves (idempotency)
+        if self.handle_duplicate_move(game_id, turn):
+            print(f"⚠️ Duplicate move detected for turn {turn}, ignoring")
+            if message.get('MESSAGE_ID'):
+                self.send_ack(message)
             return
         
         # Apply the move
@@ -753,9 +883,8 @@ class fileGameSystem:
                 print("3 | 4 | 5")
                 print("6 | 7 | 8")
         
-        # Send ACK and track processed message
+        # Send ACK
         if message.get('MESSAGE_ID'):
-            self.processed_messages[message.get('MESSAGE_ID')] = time.time()
             self.send_ack(message)
 
     def handle_game_result(self, message):
@@ -838,10 +967,7 @@ class fileGameSystem:
         if result_info['winning_line']:
             result_message["WINNING_LINE"] = ','.join(map(str, result_info['winning_line']))
         
-        # Extract target IP from opponent (format: name@ip)
-        target_ip = opponent.split('@')[-1] if '@' in opponent else "127.0.0.1"
-        
-        self.netSystem.send_message(result_message, target_ip=target_ip, target_port=LSNP_PORT)
+        self.netSystem.send_message(result_message)
     
     def display_game_result(self, game_id, result_info):
         """Display the final game result."""
@@ -964,16 +1090,3 @@ class fileGameSystem:
 
     def simulate_file_packet_loss(self):  # For testing
         pass
-
-    def cleanup_old_messages(self):
-        """Clean up old processed message IDs to prevent memory buildup."""
-        current_time = time.time()
-        cutoff_time = current_time - 3600  # Keep messages for 1 hour
-        
-        messages_to_remove = [
-            msg_id for msg_id, timestamp in self.processed_messages.items()
-            if timestamp < cutoff_time
-        ]
-        
-        for msg_id in messages_to_remove:
-            del self.processed_messages[msg_id]

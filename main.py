@@ -1,6 +1,7 @@
 import threading
 import time
 import random
+import os
 from network_System import networkSystem
 from msg_System import msgSystem
 from file_game import fileGameSystem
@@ -60,8 +61,8 @@ class LSNPClient:
             print("16. Show valid messages log")
             print("17. Revoke a token")
             print("18. 🎮 Tic-Tac-Toe Game")
-            print("19. Send File Offer")
-            print("20. Show Pending File Offers")
+            print("19. 📁 Send File")
+            print("20. 📁 File Management")
             print("21. 👥 Create Group")
             print("22. 👥 Update Group")
             print("23. 👥 Send Group Message")
@@ -143,16 +144,10 @@ class LSNPClient:
                 self.tic_tac_toe_menu()
 
             elif choice == "19":
-                self.fileGameSystem.offer_file()
+                self.send_file_menu()
 
             elif choice == "20":
-                print("\n=== Pending File Offers ===")
-                pending_offers = self.show_pending_file_offers()
-                if pending_offers:
-                    for offer in pending_offers:
-                        print(f"  - {offer['FILENAME']} from {offer['FROM']} (ID: {offer['FILEID']})")
-                else:
-                    print("No pending file offers.")
+                self.file_management_menu()
 
             elif choice == "21":
                 self.create_group()
@@ -947,38 +942,203 @@ class LSNPClient:
         except Exception as e:
             print(f"Error: {e}")
 
-    def show_pending_file_offers(self):
-        """Show and handle pending file offers."""
-        offers = getattr(self.fileGameSystem, "pending_file_offers", {})
-        if not offers:
-            print("No pending file offers.")
+    def send_file_menu(self):
+        """Menu for sending files."""
+        print("\n=== Send File ===")
+        to_user = input("Enter recipient user_id (e.g., user@127.0.0.1): ").strip()
+        if not to_user:
+            print("❌ Recipient user_id is required.")
             return
+        
+        file_path = input("Enter file path: ").strip()
+        if not file_path:
+            print("❌ File path is required.")
+            return
+        
+        if not os.path.exists(file_path):
+            print(f"❌ File not found: {file_path}")
+            return
+        
+        description = input("Enter file description (optional): ").strip()
+        
+        try:
+            file_id = self.fileGameSystem.send_file(to_user, file_path, description)
+            print(f"✅ File offer sent! File ID: {file_id}")
+        except Exception as e:
+            print(f"❌ Failed to send file: {e}")
+    
+    def file_management_menu(self):
+        """Menu for managing file transfers."""
+        while True:
+            print("\n=== File Management ===")
+            print("1. Show Pending File Offers")
+            print("2. Accept File Offer")
+            print("3. Reject File Offer")
+            print("4. Show File Transfer Status")
+            print("5. Back to Main Menu")
+            
+            choice = input("Enter choice: ").strip()
+            
+            if choice == "1":
+                self.show_pending_file_offers()
+            elif choice == "2":
+                self.accept_file_offer_menu()
+            elif choice == "3":
+                self.reject_file_offer_menu()
+            elif choice == "4":
+                self.show_file_transfer_status()
+            elif choice == "5":
+                break
+            else:
+                print("❌ Invalid choice. Please try again.")
+    
+    def accept_file_offer_menu(self):
+        """Menu to accept file offers."""
+        offers = self.show_pending_file_offers_list()
+        if not offers:
+            return
+        
+        try:
+            choice = input("Enter the number of the file offer to accept (or 'cancel'): ").strip()
+            if choice.lower() == 'cancel':
+                return
+            
+            idx = int(choice) - 1
+            if 0 <= idx < len(offers):
+                file_id = offers[idx]["file_id"]
+                offer = offers[idx]["offer"]
+                
+                if self.fileGameSystem.accept_file_offer(file_id):
+                    print(f"✅ Accepted file offer: {offer['filename']}")
+                    print("🔄 Ready to receive file chunks when sender starts transmission.")
+                else:
+                    print("❌ Failed to accept file offer.")
+            else:
+                print("❌ Invalid selection.")
+        except ValueError:
+            print("❌ Please enter a valid number.")
+        except Exception as e:
+            print(f"❌ Error accepting file offer: {e}")
+    
+    def reject_file_offer_menu(self):
+        """Menu to reject file offers."""
+        offers = self.show_pending_file_offers_list()
+        if not offers:
+            return
+        
+        try:
+            choice = input("Enter the number of the file offer to reject (or 'cancel'): ").strip()
+            if choice.lower() == 'cancel':
+                return
+            
+            idx = int(choice) - 1
+            if 0 <= idx < len(offers):
+                file_id = offers[idx]["file_id"]
+                offer = offers[idx]["offer"]
+                
+                if self.fileGameSystem.reject_file_offer(file_id):
+                    print(f"✅ Rejected file offer: {offer['filename']}")
+                else:
+                    print("❌ Failed to reject file offer.")
+            else:
+                print("❌ Invalid selection.")
+        except ValueError:
+            print("❌ Please enter a valid number.")
+        except Exception as e:
+            print(f"❌ Error rejecting file offer: {e}")
+    
+    def show_file_transfer_status(self):
+        """Show status of all file transfers."""
+        transfers = self.fileGameSystem.get_file_transfers()
+        
+        if not transfers:
+            print("📁 No active file transfers.")
+            return
+        
+        print(f"\n📁 File Transfer Status ({len(transfers)}):")
+        
+        for transfer in transfers:
+            direction = "📤" if transfer["direction"] == "outgoing" else "📥"
+            print(f"{direction} {transfer['filename']}")
+            
+            if transfer["direction"] == "outgoing":
+                print(f"   To: {transfer['to_user']}")
+            else:
+                print(f"   From: {transfer['from_user']}")
+            
+            print(f"   Status: {transfer['status']}")
+            print(f"   Progress: {transfer['progress']}")
+            print(f"   File ID: {transfer['file_id']}")
+            print()
 
-        print("\n=== Pending File Offers ===")
+    def show_pending_file_offers_list(self):
+        """Show all pending file offers and return list."""
+        offers = self.fileGameSystem.get_pending_file_offers()
+        
+        if not offers:
+            print("📁 No pending file offers.")
+            return []
+        
+        print(f"\n📁 Pending File Offers ({len(offers)}):")
+        offer_list = []
         for i, (file_id, offer) in enumerate(offers.items(), 1):
             from_user = offer.get("from_user", "Unknown")
-            filename = offer.get("filename", offer.get("file_path", "Unknown"))
-            filesize = offer.get("filesize", "Unknown")
+            filename = offer.get("filename", "Unknown")
+            filesize = offer.get("filesize", 0)
             description = offer.get("description", "")
-            status = offer.get("status", "PENDING")
-            print(f"{i}. From: {from_user}, File: {filename} ({filesize} bytes), Desc: {description}, Status: {status}, ID: {file_id}")
+            status = offer.get("status", "Unknown")
+            
+            display_name = from_user
+            if hasattr(self.msgSystem, 'get_display_name'):
+                display_name = self.msgSystem.get_display_name(from_user)
+            
+            size_str = f"{filesize:,} bytes" if filesize > 0 else "Unknown size"
+            desc_str = f" - {description}" if description else ""
+            
+            print(f"{i}. {filename} ({size_str})")
+            print(f"   From: {display_name} ({from_user})")
+            print(f"   Status: {status}")
+            if description:
+                print(f"   Description: {description}")
+            print(f"   File ID: {file_id}")
+            print()
+            
+            offer_list.append({
+                "index": i,
+                "file_id": file_id,
+                "offer": offer
+            })
+        
+        return offer_list
 
-        choice = input("Enter number to accept (or blank to cancel): ").strip()
-        if not choice.isdigit():
+    def show_pending_file_offers(self):
+        """Show and handle pending file offers."""
+        offers = self.show_pending_file_offers_list()
+        if not offers:
+            return
+
+        choice = input("Enter number to accept (or 'cancel'): ").strip()
+        if choice.lower() == 'cancel':
             print("Cancelled.")
             return
 
-        idx = int(choice) - 1
-        if idx < 0 or idx >= len(offers):
-            print("Invalid selection.")
-            return
-
-        file_id = list(offers.keys())[idx]
-        offer = offers[file_id]
-        from_user = offer.get("from_user")
-        # Call your accept logic here, e.g.:
-        self.msgSystem.accept_file_offer(file_id, from_user)
-        print(f"Accepted file offer {file_id} from {from_user}.")
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(offers):
+                file_id = offers[idx]["file_id"]
+                offer = offers[idx]["offer"]
+                
+                if self.fileGameSystem.accept_file_offer(file_id):
+                    print(f"✅ Accepted file offer: {offer['filename']}")
+                    print("🔄 Ready to receive file chunks when sender starts transmission.")
+                else:
+                    print("❌ Failed to accept file offer.")
+            else:
+                print("❌ Invalid selection.")
+        except ValueError:
+            print("❌ Please enter a valid number.")
+        except Exception as e:
+            print(f"❌ Error: {e}")
 
     # ============ GROUP MANAGEMENT METHODS ============
 

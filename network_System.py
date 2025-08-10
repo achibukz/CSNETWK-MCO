@@ -71,7 +71,7 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
         thread = threading.Thread(target=self.setup_socket, daemon=True)
         thread.start()
 
-    def send_message(self, message, target_ip=None, target_port=LSNP_PORT):  # None for broadcast
+    def send_message(self, message, target_ip=LSNP_PORT, target_port=LSNP_PORT):  # None for broadcast
         """Send an LSNP message via UDP to a target IP and port or everybody (if broadcast)."""
         try:
             # Convert to LSNP format (key-value pairs with \n\n terminator)
@@ -112,12 +112,6 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                         if self.verbose:
                             print(f"{self.get_timestamp_str()}[WARN] Broadcast failed: {e}")
                 else:
-                    # Check if target_ip is provided
-                    if target_ip is None:
-                        if self.verbose:
-                            print(f"{self.get_timestamp_str()}[ERROR] Target IP not specified for unicast message")
-                        return
-                    
                     # Get our local IP for better self-detection
                     try:
                         temp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -241,31 +235,27 @@ class networkSystem: # NOTE: Should probs pass the ui class here to acomplish pr
                 else:
                     self.log_message(f"[GAME]", message)
             elif msg_type in [MSG_GROUP_CREATE, MSG_GROUP_UPDATE, MSG_GROUP_MESSAGE]:
-                if hasattr(self, 'msg_system') and self.msg_system:
-                    self.msg_system.process_incoming_message(message)
-                else:
-                    self.log_message(f"[GROUP]", message)
+                self.log_message(f"[GROUP]", message)
             elif msg_type in [MSG_FILE_OFFER, MSG_FILE_CHUNK, MSG_FILE_RECEIVED]:
+                # File transfer messages - route to file_game_system
                 if msg_type == MSG_FILE_OFFER:
                     if hasattr(self, 'file_game_system') and self.file_game_system:
                         self.file_game_system.handle_file_offer(message)
                     else:
-                        print(f"{self.get_timestamp_str()}[FILE] {message}")
-                elif msg_type == MSG_FILE_ACCEPT:
-                    if hasattr(self, 'file_game_system') and self.file_game_system:
-                        self.file_game_system.handle_file_accept(message)
-                    else:
-                        print(f"{self.get_timestamp_str()}[FILE] {message}")
+                        if self.verbose:
+                            print(f"[NETWORK] No file_game_system for FILE_OFFER")
                 elif msg_type == MSG_FILE_CHUNK:
                     if hasattr(self, 'file_game_system') and self.file_game_system:
-                        self.file_game_system.receive_file_chunk(message)
+                        self.file_game_system.handle_file_chunk(message)
                     else:
-                        print(f"{self.get_timestamp_str()}[FILE] {message}")
+                        if self.verbose:
+                            print(f"[NETWORK] No file_game_system for FILE_CHUNK")
                 elif msg_type == MSG_FILE_RECEIVED:
                     if hasattr(self, 'file_game_system') and self.file_game_system:
                         self.file_game_system.handle_file_received(message)
                     else:
-                        print(f"{self.get_timestamp_str()}[FILE] {message}")
+                        if self.verbose:
+                            print(f"[NETWORK] No file_game_system for FILE_RECEIVED")
             elif msg_type == "HELLO":  # HELLO is not in specs, so keep as string
                 # Skip processing our own HELLO messages
                 if is_self:

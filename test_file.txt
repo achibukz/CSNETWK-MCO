@@ -1,0 +1,11 @@
+Hello, this is a test file for LSNP file transfer!
+This file contains multiple lines.
+It should be transferred correctly using the new LSNP-compliant file transfer system.
+
+LSNP File Transfer Test
+======================
+- FILE_OFFER message sent
+- FILE_CHUNK messages with base64 encoding
+- FILE_RECEIVED confirmation
+
+End of test file.
