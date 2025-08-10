@@ -245,6 +245,27 @@ class msgSystem:
         # Send with ACK tracking
         self.send_message_with_ack(message, to_user)
         
+        # Also update local like tracking for immediate feedback
+        # This helps show like counts locally before the recipient processes the message
+        post_key = (to_user, post_timestamp)
+        
+        # Initialize post like tracking if not exists
+        if post_key not in self.post_likes:
+            self.post_likes[post_key] = {'likers': set(), 'count': 0}
+        
+        # Handle LIKE/UNLIKE actions locally
+        if action == "LIKE":
+            if self.user_id not in self.post_likes[post_key]['likers']:
+                self.post_likes[post_key]['likers'].add(self.user_id)
+                self.post_likes[post_key]['count'] += 1
+        elif action == "UNLIKE":
+            if self.user_id in self.post_likes[post_key]['likers']:
+                self.post_likes[post_key]['likers'].remove(self.user_id)
+                self.post_likes[post_key]['count'] -= 1
+                # Ensure count doesn't go negative
+                if self.post_likes[post_key]['count'] < 0:
+                    self.post_likes[post_key]['count'] = 0
+        
         display_name = self.get_display_name(to_user)
         print(f"{self.get_timestamp_str()} [LIKE] Sent {action.lower()} to {display_name}'s post")
 

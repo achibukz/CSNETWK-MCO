@@ -699,13 +699,16 @@ class LSNPClient:
             
             self.msgSystem.send_like(post_user, post_timestamp, action)
             
+            # Show updated like count after action
+            updated_likes = self.msgSystem.get_like_count(post_user, post_timestamp)
+            
             # Give feedback about the action
             if action == 'LIKE':
                 print(f"✅ Sent LIKE to {display_name}'s post")
+                print(f"   Like count: {current_likes} → {updated_likes}")
             else:
                 print(f"✅ Sent UNLIKE to {display_name}'s post")
-            
-            print(f"   Current likes: {current_likes} (note: your like may not be reflected yet due to network delay)")
+                print(f"   Like count: {current_likes} → {updated_likes}")
             
         except ValueError:
             print("Invalid input.")
