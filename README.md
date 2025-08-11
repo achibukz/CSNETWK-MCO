@@ -149,3 +149,12 @@ This was accomplished as the final project for CSNETWK under section S15.
   The grading rubric and milestone breakdown for the project.
 
 ---
+
+## AI Disclaimer
+
+This project was developed with assistance from AI tools for code debugging, optimization, and documentation purposes. The core implementation, protocol design, and architectural decisions were made by the team members. AI assistance was used for:
+
+- **Code debugging and error resolution**
+- **Documentation formatting and clarity**
+
+All final code implementations, testing, and validation were performed by the team members to ensure compliance with LSNP protocol specifications and project requirements.
