@@ -16,21 +16,6 @@ This was accomplished as the final project for CSNETWK under section S15.
 
 ---
 
-## How to Run
-
-1. **Install Python 3.7+**  
-
-2. **Start two terminals**  
-   For as many peer as you would like to be on the network, run:
-   ```sh
-   python main.py --user-id "idname@(ip address)" --display-name "Display Name" --verbose
-   ```
-   (Use different user IDs and Display Na es for each peer.)
-
-3. **Use the menu** to send posts, DMs, file offers, and test file transfer.
-
----
-
 ## Menu Guide
 
 - **1. Send POST**  
